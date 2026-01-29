@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.ua.toolkit">
+
+    <queries>
+        <package android:name="com.android.vending" />
+
+        <package android:name="com.android.chrome" />
+    </queries>
+
+    <application>
+        <activity
+            android:name=".AdActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="true"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="i-am-cat" />
+            </intent-filter>
+
+        </activity>
+    </application>
+</manifest>

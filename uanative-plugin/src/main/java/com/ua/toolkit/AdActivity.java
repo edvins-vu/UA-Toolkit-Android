@@ -59,13 +59,16 @@ public class AdActivity extends Activity implements
             return;
         }
 
-        // Check if the ad has already been clicked once
-        if (!isAdClicked) {
-            isAdClicked = true;
+        // Ignore subsequent taps - only process the first click
+        if (isAdClicked) {
+            Log.d(TAG, "Ad already clicked, ignoring tap");
+            return;
+        }
 
-            if (callback != null) {
-                callback.onAdClicked();
-            }
+        isAdClicked = true;
+
+        if (callback != null) {
+            callback.onAdClicked();
         }
 
         Log.d(TAG, "Resolving click URL: " + config.clickUrl);

@@ -1,5 +1,6 @@
 package com.ua.toolkit;
 
+import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
@@ -50,10 +51,16 @@ public class StoreOpener
     }
 
     private final Context context;
+    private final boolean isActivityContext;
 
     public StoreOpener(Context context)
     {
-        this.context = context.getApplicationContext();
+        // Keep Activity context if available - needed for proper task stack handling
+        this.isActivityContext = context instanceof Activity;
+        this.context = context;
+
+        Log.d(TAG, "StoreOpener created - isActivityContext: " + isActivityContext +
+              ", contextClass: " + (context != null ? context.getClass().getName() : "null"));
     }
 
     /**
@@ -111,11 +118,17 @@ public class StoreOpener
         try
         {
             Uri uri = buildMarketUri(packageId, referrer);
-            Log.d(TAG, "Trying market:// scheme: " + uri);
+            Log.d(TAG, "Trying market:// scheme: " + uri + " (isActivityContext=" + isActivityContext + ")");
 
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             intent.setPackage(PLAY_STORE_PACKAGE);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            // Only add FLAG_ACTIVITY_NEW_TASK when NOT starting from an Activity
+            // This preserves the task stack so back button returns to the calling app
+            if (!isActivityContext)
+            {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
 
             context.startActivity(intent);
 
@@ -124,7 +137,7 @@ public class StoreOpener
         }
         catch (ActivityNotFoundException e)
         {
-            Log.w(TAG, "Market scheme failed - Play Store not found: " + e.getMessage());
+            Log.w(TAG, "Market scheme failed - Play Store not found");
             return OpenResult.failure("Play Store app not found");
         }
         catch (Exception e)
@@ -146,7 +159,12 @@ public class StoreOpener
 
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             intent.setPackage(PLAY_STORE_PACKAGE);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            // Only add FLAG_ACTIVITY_NEW_TASK when NOT starting from an Activity
+            if (!isActivityContext)
+            {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
 
             context.startActivity(intent);
 

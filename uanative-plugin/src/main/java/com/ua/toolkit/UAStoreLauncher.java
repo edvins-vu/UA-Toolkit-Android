@@ -1,11 +1,14 @@
 package com.ua.toolkit;
 
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.util.Log;
 
 /**
  * Utility class for opening tracker/redirect URLs directly to the Play Store.
  * Resolves URL redirects using a headless WebView and opens the store without browser.
+ * Falls back to browser if store link cannot be resolved.
  *
  * Call from Unity via JNI:
  * UAStoreLauncher.openLink(context, "https://app.adjust.com/...", callback);
@@ -14,6 +17,7 @@ public class UAStoreLauncher
 {
     private static final String TAG = "UAStoreLauncher";
     private static final long DEFAULT_TIMEOUT_MS = 15000;
+    public static final String BROWSER_FALLBACK = "browser-fallback";
 
     /**
      * Callback interface for link opening results.
@@ -51,6 +55,8 @@ public class UAStoreLauncher
         }
 
         Log.d(TAG, "Opening link: " + url);
+        Log.d(TAG, "Context type: " + context.getClass().getName() +
+              ", isActivity: " + (context instanceof android.app.Activity));
 
         // Cancel any previous resolution in progress
         if (currentResolver != null)
@@ -79,19 +85,79 @@ public class UAStoreLauncher
                 }
                 else
                 {
-                    Log.e(TAG, "Store open failed: " + result.message);
-                    if (callback != null) callback.onFailed(result.message);
+                    // Store opener failed - try browser fallback
+                    Log.w(TAG, "Store open failed: " + result.message + ". Trying browser fallback.");
+
+                    boolean browserOpened = openInBrowser(context, url);
+
+                    if (callback != null)
+                    {
+                        if (browserOpened)
+                        {
+                            callback.onSuccess(BROWSER_FALLBACK);
+                        }
+                        else
+                        {
+                            callback.onFailed(result.message + " (browser fallback also failed)");
+                        }
+                    }
                 }
             }
 
             @Override
             public void onFailed(String reason)
             {
-                Log.e(TAG, "URL resolution failed: " + reason);
+                Log.w(TAG, "URL resolution failed: " + reason + ". Opening in browser as fallback.");
                 currentResolver = null;
-                if (callback != null) callback.onFailed(reason);
+
+                // Fallback: open original URL in browser
+                boolean browserOpened = openInBrowser(context, url);
+
+                if (callback != null)
+                {
+                    if (browserOpened)
+                    {
+                        // Link was opened (in browser), report as success with fallback marker
+                        callback.onSuccess(BROWSER_FALLBACK);
+                    }
+                    else
+                    {
+                        // Couldn't open browser either
+                        callback.onFailed(reason + " (browser fallback also failed)");
+                    }
+                }
             }
         });
+    }
+
+    /**
+     * Open URL in default browser as fallback.
+     *
+     * @param context Android context
+     * @param url     URL to open
+     * @return true if browser was opened successfully
+     */
+    private static boolean openInBrowser(Context context, String url)
+    {
+        try
+        {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+
+            // Only add NEW_TASK flag if not starting from an Activity
+            if (!(context instanceof android.app.Activity))
+            {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
+
+            context.startActivity(intent);
+            Log.d(TAG, "Opened URL in browser: " + url);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Log.e(TAG, "Failed to open browser: " + e.getMessage());
+            return false;
+        }
     }
 
     /**

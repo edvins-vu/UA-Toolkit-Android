@@ -5,8 +5,13 @@
 
     <queries>
         <package android:name="com.android.vending" />
-
         <package android:name="com.android.chrome" />
+
+        <!-- UA Toolkit: Game packages for install detection -->
+        <!-- Replace with your actual game package names -->
+        <package android:name="com.yourstudio.game1" />
+        <package android:name="com.yourstudio.game2" />
+        <package android:name="com.yourstudio.game3" />
     </queries>
 
     <application>

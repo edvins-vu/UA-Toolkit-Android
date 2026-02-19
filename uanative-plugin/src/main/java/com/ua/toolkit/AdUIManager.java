@@ -3,6 +3,7 @@ package com.ua.toolkit;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
+import android.util.TypedValue;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.Gravity;
@@ -99,9 +100,9 @@ public class AdUIManager
         muteButton.setBackground(bg);
         clearBackgroundTint(muteButton);
 
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(120, 120, Gravity.TOP | Gravity.START);
-        params.topMargin = 20;
-        params.leftMargin = 40;
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(40), dpToPx(40), Gravity.TOP | Gravity.START);
+        params.topMargin = dpToPx(8);
+        params.leftMargin = dpToPx(14);
         muteButton.setLayoutParams(params);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
     }
@@ -110,12 +111,12 @@ public class AdUIManager
     {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor("#80000000"));
-        bg.setCornerRadius(100);
+        bg.setCornerRadius(dpToPx(33));
 
         timerText = new TextView(activity);
         timerText.setTextColor(Color.WHITE);
         timerText.setTextSize(16);
-        timerText.setPadding(50, 25, 50, 25);
+        timerText.setPadding(dpToPx(17), dpToPx(8), dpToPx(17), dpToPx(8));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
         timerText.setVisibility(isRewarded ? View.VISIBLE : View.GONE);
@@ -124,16 +125,16 @@ public class AdUIManager
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        params.topMargin = 20;
+        params.topMargin = dpToPx(8);
         timerText.setLayoutParams(params);
     }
 
     private void createButtonContainer()
     {
         buttonContainer = new FrameLayout(activity);
-        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(150, 150, Gravity.TOP | Gravity.END);
-        containerParams.topMargin = 20;
-        containerParams.rightMargin = 40;
+        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dpToPx(50), dpToPx(50), Gravity.TOP | Gravity.END);
+        containerParams.topMargin = dpToPx(8);
+        containerParams.rightMargin = dpToPx(14);
         buttonContainer.setLayoutParams(containerParams);
 
         // Countdown text
@@ -143,19 +144,22 @@ public class AdUIManager
         countdownText.setGravity(Gravity.CENTER);
         countdownText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         countdownText.setBackground(createCircleBackground());
-        countdownText.setLayoutParams(new FrameLayout.LayoutParams(130, 130, Gravity.CENTER));
+        countdownText.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(44), dpToPx(44), Gravity.CENTER));
         countdownText.setVisibility(isRewarded ? View.GONE : View.VISIBLE);
 
         // Close button
         closeButton = new Button(activity);
-        closeButton.setText("✕");
+        closeButton.setText("x");
         closeButton.setTextColor(Color.WHITE);
-        closeButton.setTextSize(20);
+        closeButton.setTextSize(10);
         closeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        closeButton.setGravity(Gravity.CENTER);
+        closeButton.setIncludeFontPadding(false);
         closeButton.setVisibility(View.GONE);
         closeButton.setBackground(createCircleBackground());
         clearBackgroundTint(closeButton);
-        closeButton.setLayoutParams(new FrameLayout.LayoutParams(130, 130, Gravity.CENTER));
+        closeButton.setPadding(0, 0, 0, 0);
+        closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER));
         closeButton.setOnClickListener(v -> listener.onCloseClicked());
 
         buttonContainer.addView(countdownText);
@@ -293,7 +297,7 @@ public class AdUIManager
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
         bg.setColor(Color.parseColor("#AA000000"));
-        bg.setStroke(4, Color.WHITE);
+        bg.setStroke(dpToPx(1.5f), Color.WHITE);
         return bg;
     }
 
@@ -303,5 +307,12 @@ public class AdUIManager
         {
             ((Button) view).setBackgroundTintList(null);
         }
+    }
+
+    private int dpToPx(float dp)
+    {
+        return (int) TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, dp,
+            activity.getResources().getDisplayMetrics());
     }
 }

@@ -157,6 +157,10 @@ public class AdActivity extends Activity implements
         finish();
     }
 
+    @Override public void onInstallClicked() {
+        onVideoTouched();
+    }
+
     @Override public void onCloseClicked() {
         // Interstitial: always success (ad was displayed)
         // Rewarded: success only if video was fully watched

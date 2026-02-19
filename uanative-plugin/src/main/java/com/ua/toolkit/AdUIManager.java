@@ -25,6 +25,7 @@ public class AdUIManager
         void onCloseClicked();
         void onMuteClicked();
         void onVideoTouched();
+        void onInstallClicked();
     }
 
     private final Activity activity;
@@ -37,7 +38,8 @@ public class AdUIManager
     private Button muteButton;
     private TextView timerText;
     private TextView countdownText;
-    private Button closeButton;
+    private TextView closeButton;
+    private TextView installButton;
     private FrameLayout buttonContainer;
 
     // Insets
@@ -64,12 +66,14 @@ public class AdUIManager
         createMuteButton();
         createTimerText();
         createButtonContainer();
+        createInstallButton();
         setupInsetHandling();
 
         rootLayout.addView(videoView);
         rootLayout.addView(timerText);
         rootLayout.addView(muteButton);
         rootLayout.addView(buttonContainer);
+        rootLayout.addView(installButton);
 
         activity.setContentView(rootLayout);
     }
@@ -132,24 +136,30 @@ public class AdUIManager
     private void createButtonContainer()
     {
         buttonContainer = new FrameLayout(activity);
-        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dpToPx(50), dpToPx(50), Gravity.TOP | Gravity.END);
+        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.TOP | Gravity.END);
         containerParams.topMargin = dpToPx(8);
         containerParams.rightMargin = dpToPx(14);
         buttonContainer.setLayoutParams(containerParams);
 
-        // Countdown text
+        // Countdown text (same size as close button)
         countdownText = new TextView(activity);
-        countdownText.setTextColor(Color.WHITE);
-        countdownText.setTextSize(28);
+        countdownText.setTextColor(Color.argb(150, 255, 255, 255));
+        countdownText.setTextSize(10);
         countdownText.setGravity(Gravity.CENTER);
+        countdownText.setIncludeFontPadding(false);
         countdownText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        countdownText.setBackground(createCircleBackground());
-        countdownText.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(44), dpToPx(44), Gravity.CENTER));
+        countdownText.setBackground(createTransparentCircleBackground());
+        countdownText.setPadding(0, 0, 0, 0);
+        countdownText.setMinHeight(0);
+        countdownText.setMinimumHeight(0);
+        countdownText.setMinWidth(0);
+        countdownText.setMinimumWidth(0);
+        countdownText.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER));
         countdownText.setVisibility(isRewarded ? View.GONE : View.VISIBLE);
 
-        // Close button
-        closeButton = new Button(activity);
-        closeButton.setText("x");
+        // Close button (using TextView to avoid Button's internal padding/min size)
+        closeButton = new TextView(activity);
+        closeButton.setText("✕");
         closeButton.setTextColor(Color.WHITE);
         closeButton.setTextSize(10);
         closeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
@@ -157,13 +167,42 @@ public class AdUIManager
         closeButton.setIncludeFontPadding(false);
         closeButton.setVisibility(View.GONE);
         closeButton.setBackground(createCircleBackground());
-        clearBackgroundTint(closeButton);
         closeButton.setPadding(0, 0, 0, 0);
+        closeButton.setMinHeight(0);
+        closeButton.setMinimumHeight(0);
+        closeButton.setMinWidth(0);
+        closeButton.setMinimumWidth(0);
         closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER));
         closeButton.setOnClickListener(v -> listener.onCloseClicked());
 
         buttonContainer.addView(countdownText);
         buttonContainer.addView(closeButton);
+    }
+
+    private void createInstallButton()
+    {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#4CAF50"));
+        bg.setCornerRadius(dpToPx(4));
+
+        installButton = new TextView(activity);
+        installButton.setText("INSTALL");
+        installButton.setTextColor(Color.WHITE);
+        installButton.setTextSize(12);
+        installButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        installButton.setGravity(Gravity.CENTER);
+        installButton.setIncludeFontPadding(false);
+        installButton.setBackground(bg);
+        installButton.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8));
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.END);
+        params.bottomMargin = dpToPx(14);
+        params.rightMargin = dpToPx(14);
+        installButton.setLayoutParams(params);
+        installButton.setOnClickListener(v -> listener.onInstallClicked());
     }
 
     private void setupInsetHandling()
@@ -207,6 +246,12 @@ public class AdUIManager
         lpC.topMargin = savedTopInset + 20;
         lpC.rightMargin = savedRightInset + 40;
         buttonContainer.setLayoutParams(lpC);
+
+        // Install button
+        FrameLayout.LayoutParams lpI = (FrameLayout.LayoutParams) installButton.getLayoutParams();
+        lpI.bottomMargin = savedBottomInset + dpToPx(14);
+        lpI.rightMargin = savedRightInset + dpToPx(14);
+        installButton.setLayoutParams(lpI);
     }
 
     public void setupFullscreen()
@@ -298,6 +343,15 @@ public class AdUIManager
         bg.setShape(GradientDrawable.OVAL);
         bg.setColor(Color.parseColor("#AA000000"));
         bg.setStroke(dpToPx(1.5f), Color.WHITE);
+        return bg;
+    }
+
+    private GradientDrawable createTransparentCircleBackground()
+    {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(Color.argb(80, 0, 0, 0));
+        bg.setStroke(dpToPx(1.5f), Color.argb(150, 255, 255, 255));
         return bg;
     }
 

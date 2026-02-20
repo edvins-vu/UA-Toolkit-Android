@@ -141,7 +141,7 @@ public class AdUIManager
         containerParams.rightMargin = dpToPx(14);
         buttonContainer.setLayoutParams(containerParams);
 
-        // Countdown text (same size as close button)
+        // Countdown text
         countdownText = new TextView(activity);
         countdownText.setTextColor(Color.argb(150, 255, 255, 255));
         countdownText.setTextSize(10);
@@ -183,17 +183,17 @@ public class AdUIManager
     {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor("#4CAF50"));
-        bg.setCornerRadius(dpToPx(4));
+        bg.setCornerRadius(dpToPx(6));
 
         installButton = new TextView(activity);
         installButton.setText("INSTALL");
         installButton.setTextColor(Color.WHITE);
-        installButton.setTextSize(12);
+        installButton.setTextSize(18);
         installButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         installButton.setGravity(Gravity.CENTER);
         installButton.setIncludeFontPadding(false);
         installButton.setBackground(bg);
-        installButton.setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8));
+        installButton.setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12));
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -283,20 +283,26 @@ public class AdUIManager
 
     // --- UI Update Methods ---
 
+    private int lastCountdownValue = -1;
+
     @SuppressLint("SetTextI18n")
     public void updateCountdown(int seconds)
     {
-        if (countdownText != null)
+        if (countdownText != null && seconds != lastCountdownValue)
         {
+            lastCountdownValue = seconds;
             countdownText.setText(String.valueOf(seconds));
         }
     }
 
+    private int lastRewardTimerValue = -1;
+
     @SuppressLint("SetTextI18n")
     public void updateRewardTimer(int seconds)
     {
-        if (timerText != null)
+        if (timerText != null && seconds != lastRewardTimerValue)
         {
+            lastRewardTimerValue = seconds;
             timerText.setText("Reward in: " + seconds + "s");
         }
     }

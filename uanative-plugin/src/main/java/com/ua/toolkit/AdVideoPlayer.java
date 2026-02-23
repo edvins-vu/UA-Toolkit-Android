@@ -24,6 +24,7 @@ public class AdVideoPlayer
     private MediaPlayer mediaPlayer;
     private int savedPosition = 0;
     private String currentVideoPath;
+    private boolean isSeeking = false;
 
     public AdVideoPlayer(VideoView videoView, Listener listener)
     {
@@ -109,10 +110,12 @@ public class AdVideoPlayer
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 {
                     final int targetPosition = savedPosition;
+                    isSeeking = true;
                     mediaPlayer.setOnSeekCompleteListener(mp ->
                     {
                         Log.d(TAG, "Seek completed to position: " + targetPosition);
                         mp.setOnSeekCompleteListener(null);
+                        isSeeking = false;
                         videoView.start();
                     });
                     videoView.seekTo(savedPosition);
@@ -139,6 +142,11 @@ public class AdVideoPlayer
         {
             videoView.stopPlayback();
         }
+    }
+
+    public boolean isSeeking()
+    {
+        return isSeeking;
     }
 
     public int getCurrentPosition()

@@ -32,6 +32,7 @@ public class AdActivity extends Activity implements
     private boolean resultSent = false;
     private boolean isAdClicked = false;
     private boolean isClickInProgress = false;
+    private boolean pausedByAudioFocus = false;
     private OnBackInvokedCallback backCallback; // API 33+
 
     private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
@@ -148,6 +149,29 @@ public class AdActivity extends Activity implements
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new com.ua.toolkit.AdAudioManager(this);
+        audioManager.setFocusChangeListener(new com.ua.toolkit.AdAudioManager.FocusChangeListener()
+        {
+            @Override
+            public void onAudioFocusPause()
+            {
+                if (videoPlayer != null && timerManager != null)
+                {
+                    pausedByAudioFocus = true;
+                    videoPlayer.pause();
+                    timerManager.pause();
+                }
+            }
+            @Override
+            public void onAudioFocusResume()
+            {
+                if (pausedByAudioFocus && !isFinishing() && videoPlayer != null && timerManager != null)
+                {
+                    pausedByAudioFocus = false;
+                    videoPlayer.resume();
+                    timerManager.resume();
+                }
+            }
+        });
         audioManager.requestFocus();
         videoPlayer = new com.ua.toolkit.AdVideoPlayer(uiManager.getVideoView(), this);
         timerManager = new AdTimerManager(this, config.closeButtonDelay, config.isRewarded);
@@ -204,7 +228,7 @@ public class AdActivity extends Activity implements
     }
     @Override public void onCountdownTick(int rem) {
         uiManager.updateCountdown(rem);
-        if (config.isRewarded && !isFullyWatched) {
+        if (config.isRewarded && !isFullyWatched && !videoPlayer.isSeeking()) {
             timerManager.updateRewardTimer(videoPlayer.getCurrentPosition(), videoPlayer.getDuration());
         }
     }
@@ -255,6 +279,7 @@ public class AdActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        pausedByAudioFocus = false; // lifecycle resume takes precedence; prevents double resume from focus callback
         if (uiManager != null) {
             uiManager.setupFullscreen();
             uiManager.applyInsets();

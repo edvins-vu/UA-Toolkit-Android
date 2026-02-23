@@ -23,6 +23,7 @@ public class AdTimerManager
     private long adStartTime;
     private long pauseTime = 0;
     private boolean closeButtonShown = false;
+    private boolean isStarted = false;
     private Runnable updateTask;
 
     public AdTimerManager(Listener listener, int closeButtonDelay, boolean isRewarded)
@@ -35,6 +36,8 @@ public class AdTimerManager
 
     public void start()
     {
+        if (isStarted) return; // Video re-prepared after surface recreation — don't reset the clock
+        isStarted = true;
         adStartTime = System.currentTimeMillis();
 
         updateTask = new Runnable()

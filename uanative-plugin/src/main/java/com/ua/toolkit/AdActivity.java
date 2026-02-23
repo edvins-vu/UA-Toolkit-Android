@@ -4,8 +4,13 @@ import android.app.Activity;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import java.lang.ref.WeakReference;
 
@@ -15,6 +20,7 @@ public class AdActivity extends Activity implements
         AdTimerManager.Listener
 {
     private static final String TAG = "AdActivity";
+    private static final int PREPARE_TIMEOUT_MS = 15_000;
     public static AdCallback callback;
     private static WeakReference<AdActivity> currentInstanceRef;
     private com.ua.toolkit.AdUIManager uiManager;
@@ -25,6 +31,15 @@ public class AdActivity extends Activity implements
     private boolean isFullyWatched = false;
     private boolean resultSent = false;
     private boolean isAdClicked = false;
+    private boolean isClickInProgress = false;
+    private OnBackInvokedCallback backCallback; // API 33+
+
+    private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
+    private final Runnable prepareTimeoutRunnable = () -> {
+        Log.e(TAG, "Video prepare timed out after " + PREPARE_TIMEOUT_MS + "ms — MediaPlayer fired neither onPrepared nor onError");
+        if (callback != null) callback.onAdFailed("Video prepare timed out");
+        finishWithResult(false);
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -37,7 +52,8 @@ public class AdActivity extends Activity implements
 
         if (!config.isValid())
         {
-            String errorMsg = "Invalid config - video path is null or empty";
+            String errorMsg = "Invalid config - video file is missing, empty, or path is null"
+                    + (config.videoPath != null ? ": " + config.videoPath : "");
             Log.e(TAG, errorMsg);
             if (callback != null) callback.onAdFailed(errorMsg);
             finishWithResult(false);
@@ -45,6 +61,7 @@ public class AdActivity extends Activity implements
         }
 
         initializeManagers();
+        registerBackCallback();
         notifyAdStarted();
         startAd();
     }
@@ -59,16 +76,17 @@ public class AdActivity extends Activity implements
             return;
         }
 
-        // Ignore subsequent taps - only process the first click
-        if (isAdClicked) {
-            Log.d(TAG, "Ad already clicked, ignoring tap");
+        // Block concurrent resolutions (e.g. double-tap while URL is still resolving)
+        if (isClickInProgress) {
+            Log.d(TAG, "Click resolution already in progress, ignoring tap");
             return;
         }
+        isClickInProgress = true;
 
-        isAdClicked = true;
-
-        if (callback != null) {
-            callback.onAdClicked();
+        // Report click to Unity exactly once per ad session
+        if (!isAdClicked) {
+            isAdClicked = true;
+            if (callback != null) callback.onAdClicked();
         }
 
         Log.d(TAG, "Resolving click URL: " + config.clickUrl);
@@ -83,15 +101,10 @@ public class AdActivity extends Activity implements
 
                 StoreOpener.OpenResult result = StoreOpener.openStore(AdActivity.this, storeInfo);
 
+                isClickInProgress = false;
                 if (result.success) {
                     Log.d(TAG, "Store opened successfully via " + result.method);
-
-                    if (config.isRewarded && !isFullyWatched) {
-                        Log.d(TAG, "Rewarded ad click: Keeping ad open to finish watch time.");
-                    } else {
-                        // For Interstitials or already finished Rewarded ads, close now
-                        finishWithResult(true);
-                    }
+                    // Keep ad alive — user can return and close via close button
                 } else {
                     handleFailure("Store open failed: " + result.message);
                 }
@@ -101,6 +114,7 @@ public class AdActivity extends Activity implements
             public void onFailed(String reason) {
                 Log.w(TAG, "URL resolution failed: " + reason);
                 currentResolver = null;
+                isClickInProgress = false;
                 handleFailure(reason);
             }
         });
@@ -145,13 +159,16 @@ public class AdActivity extends Activity implements
 
     private void startAd() {
         videoPlayer.load(config.videoPath, true);
+        prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
     }
 
     private void finishWithResult(boolean success) {
         if (resultSent) return;
         resultSent = true;
-        timerManager.stop();
-        audioManager.release();
+        prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
+        unregisterBackCallback();
+        if (timerManager != null) timerManager.stop();
+        if (audioManager != null) audioManager.release();
         if (callback != null) callback.onAdFinished(success);
         callback = null;
         finish();
@@ -168,7 +185,7 @@ public class AdActivity extends Activity implements
         finishWithResult(success);
     }
     @Override public void onMuteClicked() { audioManager.toggleMute(); uiManager.updateMuteButton(audioManager.isMuted()); }
-    @Override public void onVideoPrepared(MediaPlayer mp) { audioManager.setMediaPlayer(mp); timerManager.start(); }
+    @Override public void onVideoPrepared(MediaPlayer mp) { prepareWatchdog.removeCallbacks(prepareTimeoutRunnable); audioManager.setMediaPlayer(mp); timerManager.start(); }
 
     @Override public void onVideoCompleted() {
         if (config.isRewarded) {
@@ -179,6 +196,7 @@ public class AdActivity extends Activity implements
     }
 
     @Override public void onVideoError(int what, int extra) {
+        prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         String errorMsg = "Video playback error: what=" + what + ", extra=" + extra;
         Log.e(TAG, errorMsg);
         if (callback != null) callback.onAdFailed(errorMsg);
@@ -192,14 +210,40 @@ public class AdActivity extends Activity implements
     }
     @Override public void onCountdownComplete() { uiManager.showCloseButton(); }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
-    @Override public void onBackPressed() {
-        if (uiManager.isCloseButtonVisible()) {
-            // Same logic as onCloseClicked
+    private void handleBackNavigation() {
+        if (uiManager != null && uiManager.isCloseButtonVisible()) {
             boolean success = config.isRewarded ? isFullyWatched : true;
             finishWithResult(success);
         }
+        // Close button not visible: consume silently — ad stays locked open
     }
 
+    private void registerBackCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            backCallback = this::handleBackNavigation;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    backCallback
+            );
+        }
+    }
+
+    private void unregisterBackCallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
+            backCallback = null;
+        }
+    }
+
+    // Android 12 and below — onKeyDown handles KEYCODE_BACK
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && keyCode == KeyEvent.KEYCODE_BACK) {
+            handleBackNavigation();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
 
     @Override
     protected void onPause() {
@@ -224,6 +268,7 @@ public class AdActivity extends Activity implements
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         if (!resultSent && callback != null) { callback.onAdFinished(false); callback = null; }
         if (currentInstanceRef != null && currentInstanceRef.get() == this) { currentInstanceRef.clear(); currentInstanceRef = null; }
         if (currentResolver != null) { currentResolver.cancel(); currentResolver = null; }

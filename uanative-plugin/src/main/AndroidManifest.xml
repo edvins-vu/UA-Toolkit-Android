@@ -14,7 +14,8 @@
         <package android:name="com.yourstudio.game3" />
     </queries>
 
-    <application>
+    <application
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".AdActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"

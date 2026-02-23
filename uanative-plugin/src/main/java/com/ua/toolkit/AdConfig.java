@@ -1,5 +1,7 @@
 package com.ua.toolkit;
 
+import java.io.File;
+
 /**
  * Configuration data for ad display.
  */
@@ -20,6 +22,10 @@ public class AdConfig
 
     public boolean isValid()
     {
-        return videoPath != null && !videoPath.isEmpty();
+        if (videoPath == null || videoPath.isEmpty()) return false;
+        File file = new File(videoPath);
+        if (!file.exists()) return false;
+        if (file.length() == 0) return false;
+        return true;
     }
 }

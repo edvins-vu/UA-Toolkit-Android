@@ -1,13 +1,16 @@
 package com.ua.toolkit;
 
 import android.app.Activity;
+import android.content.pm.ActivityInfo;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.Display;
 import android.view.KeyEvent;
+import android.view.Surface;
 import android.view.WindowManager;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
@@ -48,6 +51,7 @@ public class AdActivity extends Activity implements
         super.onCreate(savedInstanceState);
         currentInstanceRef = new WeakReference<>(this);
 
+        lockOrientationToCurrentRotation();
         setupWindowFlags();
         parseIntentConfig();
 
@@ -127,7 +131,39 @@ public class AdActivity extends Activity implements
         }
     }
 
+    private void lockOrientationToCurrentRotation() {
+        int rotation;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Display display = getDisplay();
+            rotation = (display != null) ? display.getRotation() : Surface.ROTATION_90;
+        } else {
+            //noinspection deprecation
+            rotation = getWindowManager().getDefaultDisplay().getRotation();
+        }
+
+        switch (rotation) {
+            case Surface.ROTATION_90:
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                break;
+            case Surface.ROTATION_270:
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE);
+                break;
+            case Surface.ROTATION_180:
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT);
+                break;
+            default: // ROTATION_0
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                break;
+        }
+
+        Log.d(TAG, "Orientation locked to rotation=" + rotation);
+    }
+
     private void setupWindowFlags() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Must be set before setContentView so the first layout pass extends behind system bars
+            getWindow().setDecorFitsSystemWindows(false);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             getWindow().getAttributes().layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;

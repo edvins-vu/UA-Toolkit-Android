@@ -4,6 +4,8 @@ import android.media.MediaPlayer;
 import android.util.Log;
 import android.widget.VideoView;
 
+import java.io.File;
+
 /**
  * Manages video playback for ads.
  */
@@ -56,8 +58,13 @@ public class AdVideoPlayer
 
         videoView.setOnErrorListener((mp, what, extra) ->
         {
+            File videoFile = new File(currentVideoPath);
+            String fileDiagnostic = videoFile.exists()
+                    ? "file present (" + videoFile.length() + " bytes)"
+                    : "file missing — deleted externally while player was paused";
             Log.e(TAG, "Video playback failed — path: " + currentVideoPath
-                    + " | " + describeError(what, extra));
+                    + " | " + describeError(what, extra)
+                    + " | " + fileDiagnostic);
             listener.onVideoError(what, extra);
             return true;
         });

@@ -261,7 +261,6 @@ public class AdUIManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
         {
-            activity.getWindow().setDecorFitsSystemWindows(false);
             WindowInsetsController controller = decorView.getWindowInsetsController();
             if (controller != null)
             {

@@ -63,7 +63,6 @@ public class AdActivity extends Activity implements
 
         initializeManagers();
         registerBackCallback();
-        notifyAdStarted();
         startAd();
     }
 
@@ -209,7 +208,12 @@ public class AdActivity extends Activity implements
         finishWithResult(success);
     }
     @Override public void onMuteClicked() { audioManager.toggleMute(); uiManager.updateMuteButton(audioManager.isMuted()); }
-    @Override public void onVideoPrepared(MediaPlayer mp) { prepareWatchdog.removeCallbacks(prepareTimeoutRunnable); audioManager.setMediaPlayer(mp); timerManager.start(); }
+    @Override public void onVideoPrepared(MediaPlayer mp) {
+        prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
+        notifyAdStarted(); // Fire only after MediaPlayer confirms the file is valid and playback begins
+        audioManager.setMediaPlayer(mp);
+        timerManager.start();
+    }
 
     @Override public void onVideoCompleted() {
         if (config.isRewarded) {
@@ -228,10 +232,14 @@ public class AdActivity extends Activity implements
     }
     @Override public void onCountdownTick(int rem) {
         uiManager.updateCountdown(rem);
-        if (config.isRewarded && !isFullyWatched && !videoPlayer.isSeeking()) {
-            timerManager.updateRewardTimer(videoPlayer.getCurrentPosition(), videoPlayer.getDuration());
+        if (config.isRewarded && !isFullyWatched) {
+            // Use max(current, lastPaused) so the timer holds its correct pre-pause value
+            // during the keyframe catch-up window after resume, instead of jumping forward.
+            int pos = Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition());
+            timerManager.updateRewardTimer(pos, videoPlayer.getDuration());
         }
     }
+
     @Override public void onCountdownComplete() { uiManager.showCloseButton(); }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
     private void handleBackNavigation() {

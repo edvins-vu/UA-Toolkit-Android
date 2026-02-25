@@ -1,7 +1,6 @@
 package com.ua.toolkit;
 
 import android.media.MediaPlayer;
-import android.os.Build;
 import android.util.Log;
 import android.widget.VideoView;
 
@@ -21,10 +20,9 @@ public class AdVideoPlayer
 
     private final VideoView videoView;
     private final Listener listener;
-    private MediaPlayer mediaPlayer;
     private int savedPosition = 0;
+    private int lastPausedPosition = 0;
     private String currentVideoPath;
-    private boolean isSeeking = false;
 
     public AdVideoPlayer(VideoView videoView, Listener listener)
     {
@@ -40,7 +38,6 @@ public class AdVideoPlayer
         videoView.setOnPreparedListener(mp ->
         {
             Log.d(TAG, "Video prepared");
-            mediaPlayer = mp;
             listener.onVideoPrepared(mp);
             videoView.start();
         });
@@ -95,6 +92,7 @@ public class AdVideoPlayer
         if (videoView != null && videoView.isPlaying())
         {
             savedPosition = videoView.getCurrentPosition();
+            lastPausedPosition = savedPosition;
             videoView.pause();
             Log.d(TAG, "Video paused at position: " + savedPosition);
         }
@@ -104,35 +102,17 @@ public class AdVideoPlayer
     {
         if (videoView != null)
         {
-            if (savedPosition > 0 && mediaPlayer != null)
+            if (savedPosition > 0)
             {
-                // Use seek completion listener on API 26+ for accurate seeking
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                {
-                    final int targetPosition = savedPosition;
-                    isSeeking = true;
-                    mediaPlayer.setOnSeekCompleteListener(mp ->
-                    {
-                        Log.d(TAG, "Seek completed to position: " + targetPosition);
-                        mp.setOnSeekCompleteListener(null);
-                        isSeeking = false;
-                        videoView.start();
-                    });
-                    videoView.seekTo(savedPosition);
-                }
-                else
-                {
-                    videoView.seekTo(savedPosition);
-                    videoView.start();
-                }
-                savedPosition = 0;
+                // Seek and start immediately. VideoView performs the seek asynchronously while
+                // playback starts — no callback required and no deadlock possible.
+                // The timer in AdActivity uses Math.max(currentPosition, lastPausedPosition)
+                // to hold the correct value during the keyframe catch-up window.
+                videoView.seekTo(savedPosition);
                 Log.d(TAG, "Video resuming from position: " + savedPosition);
+                savedPosition = 0;
             }
-            else
-            {
-                videoView.start();
-                Log.d(TAG, "Video resumed");
-            }
+            videoView.start();
         }
     }
 
@@ -144,9 +124,9 @@ public class AdVideoPlayer
         }
     }
 
-    public boolean isSeeking()
+    public int getLastPausedPosition()
     {
-        return isSeeking;
+        return lastPausedPosition;
     }
 
     public int getCurrentPosition()

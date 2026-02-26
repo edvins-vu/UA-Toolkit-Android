@@ -297,17 +297,23 @@ public class AdPopup
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request)
             {
                 String url = request.getUrl().toString();
-                // Follow http/https redirects (Play Store web page, tracking links, etc.)
-                if (url.startsWith("https://") || url.startsWith("http://"))
-                    return false;
-                // Convert market:// deep links to the Play Store web equivalent
-                if (url.startsWith("market://details"))
+                // market:// or intent:// means the user tapped the store Install button —
+                // hand off to the existing store-opening flow (HeadlessWebViewResolver → StoreOpener)
+                if (url.startsWith("market://") || url.startsWith("intent://"))
                 {
-                    view.loadUrl(url.replace("market://details",
-                            "https://play.google.com/store/apps/details"));
+                    _listener.onInstallClicked();
                     return true;
                 }
-                // Block all other schemes (intent://, tel://, etc.)
+                // Allow redirects that stay on play.google.com (tracking links resolving
+                // to the store, locale redirects, etc.) but block navigation to any other
+                // domain so the user cannot browse away from the app listing
+                if ((url.startsWith("https://") || url.startsWith("http://"))
+                        && request.getUrl().getHost() != null
+                        && request.getUrl().getHost().endsWith("play.google.com"))
+                {
+                    return false;
+                }
+                // Block everything else (other domains, tel://, mailto://, etc.)
                 return true;
             }
         });

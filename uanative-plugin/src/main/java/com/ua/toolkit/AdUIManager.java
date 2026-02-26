@@ -333,11 +333,26 @@ public class AdUIManager
         return closeButton != null && closeButton.getVisibility() == View.VISIBLE;
     }
 
+    public void hideInstallButton()
+    {
+        if (installButton != null) installButton.setVisibility(View.GONE);
+    }
+
+    public void showInstallButton()
+    {
+        if (installButton != null) installButton.setVisibility(View.VISIBLE);
+    }
+
     // --- Getters ---
 
     public VideoView getVideoView()
     {
         return videoView;
+    }
+
+    public FrameLayout getRootLayout()
+    {
+        return rootLayout;
     }
 
     // --- Helpers ---

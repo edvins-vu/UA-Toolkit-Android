@@ -30,6 +30,7 @@ public class AdActivity extends Activity implements
     private com.ua.toolkit.AdVideoPlayer videoPlayer;
     private com.ua.toolkit.AdAudioManager audioManager;
     private AdTimerManager timerManager;
+    private AdPopup popup;
     private AdConfig config;
     private boolean isFullyWatched = false;
     private boolean resultSent = false;
@@ -175,7 +176,8 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("VIDEO_PATH"),
                 getIntent().getStringExtra("CLICK_URL"),
                 getIntent().getBooleanExtra("IS_REWARDED", false),
-                getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5)
+                getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
+                getIntent().getStringExtra("ICON_PATH")
         );
     }
 
@@ -210,6 +212,42 @@ public class AdActivity extends Activity implements
         audioManager.requestFocus();
         videoPlayer = new com.ua.toolkit.AdVideoPlayer(uiManager.getVideoView(), this);
         timerManager = new AdTimerManager(this, config.closeButtonDelay, config.isRewarded);
+
+        popup = new AdPopup(this, uiManager.getRootLayout(), new AdPopup.Listener()
+        {
+            @Override
+            public void onPeeked()
+            {
+                uiManager.hideInstallButton();
+            }
+
+            @Override
+            public void onDismissed()
+            {
+                uiManager.showInstallButton();
+            }
+
+            @Override
+            public void onExpanded()
+            {
+                if (videoPlayer != null) videoPlayer.pause();
+                if (timerManager != null) timerManager.pause();
+            }
+
+            @Override
+            public void onCollapsed()
+            {
+                if (!isFinishing() && videoPlayer != null) videoPlayer.resume();
+                if (!isFinishing() && timerManager != null) timerManager.resume();
+            }
+
+            @Override
+            public void onInstallClicked()
+            {
+                onVideoTouched();
+            }
+        });
+        popup.attach(config);
     }
 
     private void notifyAdStarted() {
@@ -226,6 +264,7 @@ public class AdActivity extends Activity implements
         resultSent = true;
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         unregisterBackCallback();
+        if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
         if (callback != null) callback.onAdFinished(success);
@@ -249,6 +288,7 @@ public class AdActivity extends Activity implements
         notifyAdStarted(); // Fire only after MediaPlayer confirms the file is valid and playback begins
         audioManager.setMediaPlayer(mp);
         timerManager.start();
+        popup.schedulePeek();
     }
 
     @Override public void onVideoCompleted() {
@@ -278,7 +318,12 @@ public class AdActivity extends Activity implements
 
     @Override public void onCountdownComplete() { uiManager.showCloseButton(); }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
+
     private void handleBackNavigation() {
+        // Let the popup consume back first if it is expanded
+        if (popup != null && popup.handleBackPress()) {
+            return;
+        }
         if (uiManager != null && uiManager.isCloseButtonVisible()) {
             boolean success = config.isRewarded ? isFullyWatched : true;
             finishWithResult(success);
@@ -341,6 +386,7 @@ public class AdActivity extends Activity implements
         if (!resultSent && callback != null) { callback.onAdFinished(false); callback = null; }
         if (currentInstanceRef != null && currentInstanceRef.get() == this) { currentInstanceRef.clear(); currentInstanceRef = null; }
         if (currentResolver != null) { currentResolver.cancel(); currentResolver = null; }
+        if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
         if (videoPlayer != null) videoPlayer.stop();

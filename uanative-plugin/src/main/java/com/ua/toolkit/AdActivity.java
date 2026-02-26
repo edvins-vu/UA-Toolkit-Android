@@ -373,7 +373,9 @@ public class AdActivity extends Activity implements
             uiManager.setupFullscreen();
             uiManager.applyInsets();
         }
-        if (!isFinishing() && videoPlayer != null && timerManager != null) {
+        // Do not resume if the popup is expanded — it paused the video intentionally
+        boolean popupExpanded = popup != null && popup.isExpanded();
+        if (!isFinishing() && !popupExpanded && videoPlayer != null && timerManager != null) {
             videoPlayer.resume();
             timerManager.resume();
         }

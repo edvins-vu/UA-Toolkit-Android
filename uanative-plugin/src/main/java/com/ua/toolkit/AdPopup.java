@@ -57,6 +57,7 @@ public class AdPopup
 
     private float _dragStartY;
     private float _dragStartTranslation;
+    private AnimatorSet _runningAnimator;
 
     public AdPopup(Activity activity, FrameLayout rootLayout, Listener listener)
     {
@@ -93,6 +94,11 @@ public class AdPopup
         }, PEEK_DELAY_MS);
     }
 
+    public boolean isExpanded()
+    {
+        return _state == State.EXPANDED;
+    }
+
     public boolean handleBackPress()
     {
         if (_state == State.EXPANDED)
@@ -107,6 +113,11 @@ public class AdPopup
     {
         _isCancelled = true;
         _handler.removeCallbacksAndMessages(null);
+        if (_runningAnimator != null)
+        {
+            _runningAnimator.cancel();
+            _runningAnimator = null;
+        }
         if (_scrim != null)
         {
             _rootLayout.removeView(_scrim);
@@ -338,6 +349,12 @@ public class AdPopup
 
     private void animateSheet(float targetTranslation, float targetScrimAlpha, Runnable onEnd)
     {
+        if (_runningAnimator != null)
+        {
+            _runningAnimator.cancel();
+            _runningAnimator = null;
+        }
+
         ObjectAnimator sheetAnim = ObjectAnimator.ofFloat(_sheet, "translationY", targetTranslation);
         ObjectAnimator scrimAnim = ObjectAnimator.ofFloat(_scrim, "alpha", targetScrimAlpha);
 
@@ -345,19 +362,17 @@ public class AdPopup
         set.playTogether(sheetAnim, scrimAnim);
         set.setDuration(ANIM_DURATION_MS);
         set.setInterpolator(new DecelerateInterpolator());
-
-        if (onEnd != null)
+        set.addListener(new AnimatorListenerAdapter()
         {
-            set.addListener(new AnimatorListenerAdapter()
+            @Override
+            public void onAnimationEnd(Animator animation)
             {
-                @Override
-                public void onAnimationEnd(Animator animation)
-                {
-                    onEnd.run();
-                }
-            });
-        }
+                _runningAnimator = null;
+                if (onEnd != null) onEnd.run();
+            }
+        });
 
+        _runningAnimator = set;
         set.start();
     }
 

@@ -19,9 +19,13 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 public class AdPopup
@@ -49,6 +53,7 @@ public class AdPopup
 
     private View _scrim;
     private LinearLayout _sheet;
+    private WebView _webView;
 
     private int _peekHeight;
     private int _sheetHeight;
@@ -118,6 +123,11 @@ public class AdPopup
             _runningAnimator.cancel();
             _runningAnimator = null;
         }
+        if (_webView != null)
+        {
+            _webView.destroy();
+            _webView = null;
+        }
         if (_scrim != null)
         {
             _rootLayout.removeView(_scrim);
@@ -163,6 +173,7 @@ public class AdPopup
         addHeaderRow();
         addIconView(config);
         addInstallButton();
+        addStoreWebView(config);
         setupDragListener();
     }
 
@@ -246,6 +257,65 @@ public class AdPopup
         installBtn.setOnClickListener(v -> _listener.onInstallClicked());
 
         _sheet.addView(installBtn);
+    }
+
+    private void addStoreWebView(AdConfig config)
+    {
+        if (config.clickUrl.isEmpty()) return;
+
+        // FrameLayout wrapper — weight=1 fills all remaining sheet height below the install button
+        FrameLayout webContainer = new FrameLayout(_activity);
+        LinearLayout.LayoutParams containerParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+        containerParams.topMargin = dpToPx(12);
+        webContainer.setLayoutParams(containerParams);
+
+        // Loading spinner shown until the page finishes loading
+        ProgressBar spinner = new ProgressBar(_activity);
+        spinner.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+
+        _webView = new WebView(_activity);
+        _webView.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        _webView.getSettings().setJavaScriptEnabled(true);
+        _webView.getSettings().setDomStorageEnabled(true);
+        _webView.getSettings().setLoadWithOverviewMode(true);
+        _webView.getSettings().setUseWideViewPort(true);
+        _webView.setWebViewClient(new WebViewClient()
+        {
+            @Override
+            public void onPageFinished(WebView view, String url)
+            {
+                spinner.setVisibility(View.GONE);
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request)
+            {
+                String url = request.getUrl().toString();
+                // Follow http/https redirects (Play Store web page, tracking links, etc.)
+                if (url.startsWith("https://") || url.startsWith("http://"))
+                    return false;
+                // Convert market:// deep links to the Play Store web equivalent
+                if (url.startsWith("market://details"))
+                {
+                    view.loadUrl(url.replace("market://details",
+                            "https://play.google.com/store/apps/details"));
+                    return true;
+                }
+                // Block all other schemes (intent://, tel://, etc.)
+                return true;
+            }
+        });
+        _webView.loadUrl(config.clickUrl);
+
+        webContainer.addView(_webView);
+        webContainer.addView(spinner);
+        _sheet.addView(webContainer);
     }
 
     // --- Drag Handling ---

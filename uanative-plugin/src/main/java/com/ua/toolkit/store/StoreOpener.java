@@ -1,4 +1,4 @@
-package com.ua.toolkit;
+package com.ua.toolkit.store;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;

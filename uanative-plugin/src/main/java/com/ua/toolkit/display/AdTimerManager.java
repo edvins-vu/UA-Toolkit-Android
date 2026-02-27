@@ -1,4 +1,4 @@
-package com.ua.toolkit;
+package com.ua.toolkit.display;
 
 import android.os.Handler;
 import android.os.Looper;

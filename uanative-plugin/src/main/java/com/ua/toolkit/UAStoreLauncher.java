@@ -1,5 +1,8 @@
 package com.ua.toolkit;
 
+import com.ua.toolkit.store.HeadlessWebViewResolver;
+import com.ua.toolkit.store.StoreOpener;
+
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;

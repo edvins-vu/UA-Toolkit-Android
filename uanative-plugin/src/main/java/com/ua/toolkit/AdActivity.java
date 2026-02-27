@@ -15,28 +15,33 @@ import android.view.WindowManager;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
+import com.ua.toolkit.display.AdAudioManager;
+import com.ua.toolkit.display.AdTimerManager;
+import com.ua.toolkit.display.AdUIManager;
+import com.ua.toolkit.display.AdVideoPlayer;
+import com.ua.toolkit.popup.AdPopup;
+
 import java.lang.ref.WeakReference;
 
 public class AdActivity extends Activity implements
-        com.ua.toolkit.AdUIManager.Listener,
-        com.ua.toolkit.AdVideoPlayer.Listener,
+        AdUIManager.Listener,
+        AdVideoPlayer.Listener,
         AdTimerManager.Listener
 {
     private static final String TAG = "AdActivity";
     private static final int PREPARE_TIMEOUT_MS = 15_000;
     public static AdCallback callback;
     private static WeakReference<AdActivity> currentInstanceRef;
-    private com.ua.toolkit.AdUIManager uiManager;
-    private com.ua.toolkit.AdVideoPlayer videoPlayer;
-    private com.ua.toolkit.AdAudioManager audioManager;
+    private AdUIManager uiManager;
+    private AdVideoPlayer videoPlayer;
+    private AdAudioManager audioManager;
     private AdTimerManager timerManager;
     private AdPopup popup;
     private AdConfig config;
     private boolean isFullyWatched = false;
     private boolean resultSent = false;
-    private boolean isAdClicked = false;
-    private boolean isClickInProgress = false;
     private boolean pausedByAudioFocus = false;
+    private boolean closeButtonEarned = false;
     private OnBackInvokedCallback backCallback; // API 33+
 
     private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
@@ -73,63 +78,9 @@ public class AdActivity extends Activity implements
 
     // --- AdUIManager.Listener ---
 
-    private HeadlessWebViewResolver currentResolver;
-
     @Override
     public void onVideoTouched() {
-        if (config == null || config.clickUrl == null || config.clickUrl.isEmpty()) {
-            return;
-        }
-
-        // Block concurrent resolutions (e.g. double-tap while URL is still resolving)
-        if (isClickInProgress) {
-            Log.d(TAG, "Click resolution already in progress, ignoring tap");
-            return;
-        }
-        isClickInProgress = true;
-
-        // Report click to Unity exactly once per ad session
-        if (!isAdClicked) {
-            isAdClicked = true;
-            if (callback != null) callback.onAdClicked();
-        }
-
-        Log.d(TAG, "Resolving click URL: " + config.clickUrl);
-
-        currentResolver = new HeadlessWebViewResolver(this);
-        currentResolver.setTimeout(15000); // 15 second timeout
-
-        currentResolver.resolve(config.clickUrl, new HeadlessWebViewResolver.ResolverCallback() {
-            @Override
-            public void onStoreFound(HeadlessWebViewResolver.StoreInfo storeInfo) {
-                currentResolver = null;
-
-                StoreOpener.OpenResult result = StoreOpener.openStore(AdActivity.this, storeInfo);
-
-                isClickInProgress = false;
-                if (result.success) {
-                    Log.d(TAG, "Store opened successfully via " + result.method);
-                    // Keep ad alive — user can return and close via close button
-                } else {
-                    handleFailure("Store open failed: " + result.message);
-                }
-            }
-
-            @Override
-            public void onFailed(String reason) {
-                Log.w(TAG, "URL resolution failed: " + reason);
-                currentResolver = null;
-                isClickInProgress = false;
-                handleFailure(reason);
-            }
-        });
-    }
-
-    private void handleFailure(String reason) {
-        Log.e(TAG, "Ad Click Failed: " + reason);
-        if (callback != null) {
-            callback.onAdFailed(reason);
-        }
+        if (popup != null) popup.handleVideoTap();
     }
 
     private void lockOrientationToCurrentRotation() {
@@ -177,16 +128,17 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("CLICK_URL"),
                 getIntent().getBooleanExtra("IS_REWARDED", false),
                 getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
-                getIntent().getStringExtra("ICON_PATH")
+                getIntent().getStringExtra("ICON_PATH"),
+                getIntent().getIntExtra("POPUP_PEEK_DELAY", 5)
         );
     }
 
     private void initializeManagers() {
-        uiManager = new com.ua.toolkit.AdUIManager(this, this, config.isRewarded);
+        uiManager = new AdUIManager(this, this, config.isRewarded);
         uiManager.setupUI();
         uiManager.setupFullscreen();
-        audioManager = new com.ua.toolkit.AdAudioManager(this);
-        audioManager.setFocusChangeListener(new com.ua.toolkit.AdAudioManager.FocusChangeListener()
+        audioManager = new AdAudioManager(this);
+        audioManager.setFocusChangeListener(new AdAudioManager.FocusChangeListener()
         {
             @Override
             public void onAudioFocusPause()
@@ -210,21 +162,19 @@ public class AdActivity extends Activity implements
             }
         });
         audioManager.requestFocus();
-        videoPlayer = new com.ua.toolkit.AdVideoPlayer(uiManager.getVideoView(), this);
+        videoPlayer = new AdVideoPlayer(uiManager.getVideoView(), this);
         timerManager = new AdTimerManager(this, config.closeButtonDelay, config.isRewarded);
 
         popup = new AdPopup(this, uiManager.getRootLayout(), new AdPopup.Listener()
         {
             @Override
-            public void onPeeked()
-            {
-                uiManager.hideInstallButton();
-            }
+            public void onPeeked() {}
 
             @Override
             public void onDismissed()
             {
-                uiManager.showInstallButton();
+                boolean success = config.isRewarded ? isFullyWatched : true;
+                finishWithResult(success);
             }
 
             @Override
@@ -232,6 +182,7 @@ public class AdActivity extends Activity implements
             {
                 if (videoPlayer != null) videoPlayer.pause();
                 if (timerManager != null) timerManager.pause();
+                uiManager.hideCloseButton();
             }
 
             @Override
@@ -239,12 +190,13 @@ public class AdActivity extends Activity implements
             {
                 if (!isFinishing() && videoPlayer != null) videoPlayer.resume();
                 if (!isFinishing() && timerManager != null) timerManager.resume();
+                if (closeButtonEarned) uiManager.showCloseButton();
             }
 
             @Override
-            public void onInstallClicked()
+            public void onAdClicked()
             {
-                onVideoTouched();
+                if (callback != null) callback.onAdClicked();
             }
         });
         popup.attach(config);
@@ -272,10 +224,6 @@ public class AdActivity extends Activity implements
         finish();
     }
 
-    @Override public void onInstallClicked() {
-        onVideoTouched();
-    }
-
     @Override public void onCloseClicked() {
         // Interstitial: always success (ad was displayed)
         // Rewarded: success only if video was fully watched
@@ -288,7 +236,7 @@ public class AdActivity extends Activity implements
         notifyAdStarted(); // Fire only after MediaPlayer confirms the file is valid and playback begins
         audioManager.setMediaPlayer(mp);
         timerManager.start();
-        popup.schedulePeek();
+        popup.schedulePeek(config.peekDelay);
     }
 
     @Override public void onVideoCompleted() {
@@ -316,7 +264,11 @@ public class AdActivity extends Activity implements
         }
     }
 
-    @Override public void onCountdownComplete() { uiManager.showCloseButton(); }
+    @Override public void onCountdownComplete()
+    {
+        closeButtonEarned = true;
+        if (popup == null || !popup.isExpanded()) uiManager.showCloseButton();
+    }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
 
     private void handleBackNavigation() {
@@ -363,6 +315,7 @@ public class AdActivity extends Activity implements
         super.onPause();
         if (videoPlayer != null) videoPlayer.pause();
         if (timerManager != null) timerManager.pause();
+        if (popup != null) popup.pauseWebContent();
     }
 
     @Override
@@ -373,9 +326,12 @@ public class AdActivity extends Activity implements
             uiManager.setupFullscreen();
             uiManager.applyInsets();
         }
-        // Do not resume if the popup is expanded — it paused the video intentionally
+        // Do not resume video/timer if the popup is expanded — it paused them intentionally.
+        // But do resume the WebView so its JS and network activity continue.
         boolean popupExpanded = popup != null && popup.isExpanded();
-        if (!isFinishing() && !popupExpanded && videoPlayer != null && timerManager != null) {
+        if (popupExpanded) {
+            popup.resumeWebContent();
+        } else if (!isFinishing() && videoPlayer != null && timerManager != null) {
             videoPlayer.resume();
             timerManager.resume();
         }
@@ -387,7 +343,6 @@ public class AdActivity extends Activity implements
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         if (!resultSent && callback != null) { callback.onAdFinished(false); callback = null; }
         if (currentInstanceRef != null && currentInstanceRef.get() == this) { currentInstanceRef.clear(); currentInstanceRef = null; }
-        if (currentResolver != null) { currentResolver.cancel(); currentResolver = null; }
         if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();

@@ -1,4 +1,4 @@
-package com.ua.toolkit;
+package com.ua.toolkit.display;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -25,7 +25,6 @@ public class AdUIManager
         void onCloseClicked();
         void onMuteClicked();
         void onVideoTouched();
-        void onInstallClicked();
     }
 
     private final Activity activity;
@@ -39,7 +38,6 @@ public class AdUIManager
     private TextView timerText;
     private TextView countdownText;
     private TextView closeButton;
-    private TextView installButton;
     private FrameLayout buttonContainer;
 
     // Insets
@@ -66,14 +64,12 @@ public class AdUIManager
         createMuteButton();
         createTimerText();
         createButtonContainer();
-        createInstallButton();
         setupInsetHandling();
 
         rootLayout.addView(videoView);
         rootLayout.addView(timerText);
         rootLayout.addView(muteButton);
         rootLayout.addView(buttonContainer);
-        rootLayout.addView(installButton);
 
         activity.setContentView(rootLayout);
     }
@@ -179,32 +175,6 @@ public class AdUIManager
         buttonContainer.addView(closeButton);
     }
 
-    private void createInstallButton()
-    {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor("#4CAF50"));
-        bg.setCornerRadius(dpToPx(6));
-
-        installButton = new TextView(activity);
-        installButton.setText("INSTALL");
-        installButton.setTextColor(Color.WHITE);
-        installButton.setTextSize(18);
-        installButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        installButton.setGravity(Gravity.CENTER);
-        installButton.setIncludeFontPadding(false);
-        installButton.setBackground(bg);
-        installButton.setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12));
-
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
-        params.bottomMargin = dpToPx(14);
-        params.rightMargin = dpToPx(14);
-        installButton.setLayoutParams(params);
-        installButton.setOnClickListener(v -> listener.onInstallClicked());
-    }
-
     private void setupInsetHandling()
     {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
@@ -246,12 +216,6 @@ public class AdUIManager
         lpC.topMargin = savedTopInset + 20;
         lpC.rightMargin = savedRightInset + 40;
         buttonContainer.setLayoutParams(lpC);
-
-        // Install button
-        FrameLayout.LayoutParams lpI = (FrameLayout.LayoutParams) installButton.getLayoutParams();
-        lpI.bottomMargin = savedBottomInset + dpToPx(14);
-        lpI.rightMargin = savedRightInset + dpToPx(14);
-        installButton.setLayoutParams(lpI);
     }
 
     public void setupFullscreen()
@@ -320,6 +284,11 @@ public class AdUIManager
         if (closeButton != null) closeButton.setVisibility(View.VISIBLE);
     }
 
+    public void hideCloseButton()
+    {
+        if (closeButton != null) closeButton.setVisibility(View.GONE);
+    }
+
     public void updateMuteButton(boolean isMuted)
     {
         if (muteButton != null)
@@ -331,16 +300,6 @@ public class AdUIManager
     public boolean isCloseButtonVisible()
     {
         return closeButton != null && closeButton.getVisibility() == View.VISIBLE;
-    }
-
-    public void hideInstallButton()
-    {
-        if (installButton != null) installButton.setVisibility(View.GONE);
-    }
-
-    public void showInstallButton()
-    {
-        if (installButton != null) installButton.setVisibility(View.VISIBLE);
     }
 
     // --- Getters ---

@@ -1,4 +1,4 @@
-package com.ua.toolkit;
+package com.ua.toolkit.display;
 
 import android.content.Context;
 import android.media.AudioAttributes;

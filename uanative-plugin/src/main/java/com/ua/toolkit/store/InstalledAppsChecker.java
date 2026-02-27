@@ -1,4 +1,4 @@
-package com.ua.toolkit;
+package com.ua.toolkit.store;
 
 import android.content.Context;
 import android.content.pm.PackageManager;

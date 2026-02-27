@@ -12,14 +12,16 @@ public class AdConfig
     public final boolean isRewarded;
     public final int closeButtonDelay;
     public final String iconPath;
+    public final int peekDelay;
 
-    public AdConfig(String videoPath, String clickUrl, boolean isRewarded, int closeButtonDelay, String iconPath)
+    public AdConfig(String videoPath, String clickUrl, boolean isRewarded, int closeButtonDelay, String iconPath, int peekDelay)
     {
         this.videoPath = videoPath;
         this.clickUrl = clickUrl != null ? clickUrl : "";
         this.isRewarded = isRewarded;
         this.closeButtonDelay = closeButtonDelay;
         this.iconPath = iconPath != null ? iconPath : "";
+        this.peekDelay = peekDelay;
     }
 
     public boolean isValid()

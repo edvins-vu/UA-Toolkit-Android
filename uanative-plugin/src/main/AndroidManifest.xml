@@ -3,6 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.ua.toolkit">
 
+    <!-- Required for the Stage 2 WebView to load URLs and for HeadlessWebViewResolver -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <queries>
         <package android:name="com.android.vending" />
         <package android:name="com.android.chrome" />
@@ -22,6 +25,7 @@
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
+            android:hardwareAccelerated="true"
             tools:ignore="DiscouragedApi,LockedOrientationActivity">
 
             <intent-filter>

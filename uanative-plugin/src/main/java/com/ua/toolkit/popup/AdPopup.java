@@ -8,9 +8,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
-
-import android.content.BroadcastReceiver;
-import android.content.Context;
+import android.content.Intent;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -22,6 +20,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -29,7 +28,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
@@ -40,6 +41,8 @@ import android.widget.TextView;
 
 public class AdPopup
 {
+    private static final String TAG = "AdPopup";
+
     public interface Listener
     {
         void onPeeked();       // Stage 1 first becomes visible
@@ -349,7 +352,13 @@ public class AdPopup
         // Load the store URL — Adjust attribution fires here, not on attach
         if (_webView != null && _config != null && !_config.clickUrl.isEmpty())
         {
+            Log.d(TAG, "Loading clickUrl: " + _config.clickUrl);
             _webView.loadUrl(_config.clickUrl);
+        }
+        else
+        {
+            Log.e(TAG, "expandToFull: clickUrl is empty — WebView will not load anything."
+                    + " Check that CLICK_URL is passed in the ad Intent.");
         }
 
         // Animate to full height and notify listener
@@ -442,6 +451,9 @@ public class AdPopup
         _webView.setLayoutParams(new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+        // Explicit white background prevents the hardware-accelerated WebView
+        // from showing a black surface before the first page paint arrives.
+        _webView.setBackgroundColor(Color.WHITE);
         _webView.getSettings().setJavaScriptEnabled(true);
         _webView.getSettings().setDomStorageEnabled(true);
         _webView.getSettings().setLoadWithOverviewMode(true);
@@ -465,6 +477,7 @@ public class AdPopup
             public void onPageFinished(WebView view, String url)
             {
                 spinner.setVisibility(View.GONE);
+                Log.d(TAG, "onPageFinished: " + url);
                 // Mark the Play Store page as loaded so we can distinguish
                 // user-initiated market:// taps from the automatic intent:// redirect
                 // the Play Store page fires on load to try opening the native app.
@@ -478,7 +491,11 @@ public class AdPopup
                         try
                         {
                             String id = Uri.parse(url).getQueryParameter("id");
-                            if (id != null && !id.isEmpty()) _targetPackage = id;
+                            if (id != null && !id.isEmpty())
+                            {
+                                _targetPackage = id;
+                                Log.d(TAG, "Late-extracted targetPackage: " + _targetPackage);
+                            }
                         }
                         catch (Exception ignored) {}
                     }
@@ -489,6 +506,7 @@ public class AdPopup
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request)
             {
                 String url = request.getUrl().toString();
+                Log.d(TAG, "shouldOverrideUrlLoading: " + url + " (storeLoaded=" + _storePageLoaded + ")");
                 if (url.startsWith("market://") || url.startsWith("intent://"))
                 {
                     // Only move to Stage 3 after the Play Store page has fully loaded.
@@ -498,11 +516,38 @@ public class AdPopup
                     {
                         _activity.runOnUiThread(() -> { if (!_isCancelled) transitionToNativeFallback(); });
                     }
+                    else
+                    {
+                        Log.d(TAG, "Suppressed early market/intent redirect — store page not yet loaded");
+                    }
                     // Always return true — WebView cannot navigate market:// or intent://.
                     return true;
                 }
                 // Allow all other navigations: Adjust redirect chain, Play Store pages, etc.
                 return false;
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request,
+                                        WebResourceError error)
+            {
+                if (request.isForMainFrame())
+                {
+                    Log.e(TAG, "WebView main-frame error: code=" + error.getErrorCode()
+                            + " description=" + error.getDescription()
+                            + " url=" + request.getUrl());
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            WebResourceResponse errorResponse)
+            {
+                if (request.isForMainFrame())
+                {
+                    Log.e(TAG, "WebView HTTP error: status=" + errorResponse.getStatusCode()
+                            + " url=" + request.getUrl());
+                }
             }
         });
 
@@ -634,8 +679,30 @@ public class AdPopup
 
     private void openStore()
     {
-        if (_targetPackage == null || _targetPackage.isEmpty()) return;
-        StoreOpener.openStore(_activity, _targetPackage, null);
+        if (_targetPackage != null && !_targetPackage.isEmpty())
+        {
+            Log.d(TAG, "openStore: launching market:// for " + _targetPackage);
+            StoreOpener.openStore(_activity, _targetPackage, null);
+        }
+        else if (_config != null && !_config.clickUrl.isEmpty())
+        {
+            // Package ID not yet resolved (Play Store page never finished loading).
+            // Fall back to the raw click URL so the user is not left with a dead button.
+            Log.w(TAG, "openStore: targetPackage null — falling back to clickUrl: " + _config.clickUrl);
+            try
+            {
+                _activity.startActivity(
+                        new Intent(Intent.ACTION_VIEW, Uri.parse(_config.clickUrl)));
+            }
+            catch (Exception e)
+            {
+                Log.e(TAG, "openStore fallback failed: " + e.getMessage());
+            }
+        }
+        else
+        {
+            Log.e(TAG, "openStore: both targetPackage and clickUrl are empty — nothing to open");
+        }
     }
 
     private void pulsateNativeFallback()

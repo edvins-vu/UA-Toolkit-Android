@@ -1,6 +1,7 @@
 package com.ua.toolkit;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.media.MediaPlayer;
 import android.os.Build;
@@ -8,9 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import android.view.Display;
 import android.view.KeyEvent;
-import android.view.Surface;
 import android.view.WindowManager;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
@@ -42,6 +41,8 @@ public class AdActivity extends Activity implements
     private boolean resultSent = false;
     private boolean pausedByAudioFocus = false;
     private boolean closeButtonEarned = false;
+    private boolean resumingFromPlayOverlay = false;
+    private boolean adStartedFired = false;
     private OnBackInvokedCallback backCallback; // API 33+
 
     private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
@@ -56,10 +57,18 @@ public class AdActivity extends Activity implements
     {
         super.onCreate(savedInstanceState);
         currentInstanceRef = new WeakReference<>(this);
+        Log.d(TAG, "onCreate");
 
         lockOrientationToCurrentRotation();
         setupWindowFlags();
         parseIntentConfig();
+        Log.d(TAG, "config: videoPath=" + config.videoPath
+                + " bundleId=" + config.bundleId
+                + " appName=" + config.appName
+                + " clickUrl=" + config.clickUrl
+                + " isRewarded=" + config.isRewarded
+                + " closeButtonDelay=" + config.closeButtonDelay
+                + " peekDelay=" + config.peekDelay);
 
         if (!config.isValid())
         {
@@ -72,6 +81,7 @@ public class AdActivity extends Activity implements
         }
 
         initializeManagers();
+        overridePendingTransition(R.anim.slide_in_bottom, 0);
         registerBackCallback();
         startAd();
     }
@@ -84,34 +94,14 @@ public class AdActivity extends Activity implements
     }
 
     private void lockOrientationToCurrentRotation() {
-        int rotation;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Display display = getDisplay();
-            rotation = (display != null) ? display.getRotation() : Surface.ROTATION_90;
-        } else {
-            //noinspection deprecation
-            rotation = getWindowManager().getDefaultDisplay().getRotation();
-        }
-
-        switch (rotation) {
-            case Surface.ROTATION_90:
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                break;
-            case Surface.ROTATION_270:
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE);
-                break;
-            case Surface.ROTATION_180:
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT);
-                break;
-            default: // ROTATION_0
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-                break;
-        }
-
-        Log.d(TAG, "Orientation locked to rotation=" + rotation);
+        // Game is landscape-only — allow sensor-driven switching between LANDSCAPE and REVERSE_LANDSCAPE
+        // so the ad follows 180° device flips without ever snapping to portrait.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        Log.d(TAG, "Orientation locked to SENSOR_LANDSCAPE");
     }
 
     private void setupWindowFlags() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Must be set before setContentView so the first layout pass extends behind system bars
             getWindow().setDecorFitsSystemWindows(false);
@@ -129,12 +119,18 @@ public class AdActivity extends Activity implements
                 getIntent().getBooleanExtra("IS_REWARDED", false),
                 getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
                 getIntent().getStringExtra("ICON_PATH"),
-                getIntent().getIntExtra("POPUP_PEEK_DELAY", 5)
+                getIntent().getIntExtra("POPUP_PEEK_DELAY", 5),
+                getIntent().getStringExtra("BUNDLE_ID"),
+                getIntent().getStringExtra("APP_NAME"),
+                getIntent().getStringExtra("GET_BUTTON_TEXT"),
+                getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
+                getIntent().getStringExtra("REWARD_EARNED_TEXT")
         );
     }
 
     private void initializeManagers() {
-        uiManager = new AdUIManager(this, this, config.isRewarded);
+        uiManager = new AdUIManager(this, this, config.isRewarded,
+                config.rewardCountdownText, config.rewardEarnedText);
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new AdAudioManager(this);
@@ -143,6 +139,7 @@ public class AdActivity extends Activity implements
             @Override
             public void onAudioFocusPause()
             {
+                Log.d(TAG, "onAudioFocusPause — pausing video and timer");
                 if (videoPlayer != null && timerManager != null)
                 {
                     pausedByAudioFocus = true;
@@ -153,6 +150,7 @@ public class AdActivity extends Activity implements
             @Override
             public void onAudioFocusResume()
             {
+                Log.d(TAG, "onAudioFocusResume — pausedByAudioFocus=" + pausedByAudioFocus);
                 if (pausedByAudioFocus && !isFinishing() && videoPlayer != null && timerManager != null)
                 {
                     pausedByAudioFocus = false;
@@ -168,18 +166,22 @@ public class AdActivity extends Activity implements
         popup = new AdPopup(this, uiManager.getRootLayout(), new AdPopup.Listener()
         {
             @Override
-            public void onPeeked() {}
+            public void onPeeked() {
+                Log.d(TAG, "popup.onPeeked — Stage 1 visible");
+            }
 
             @Override
             public void onDismissed()
             {
                 boolean success = config.isRewarded ? isFullyWatched : true;
+                Log.d(TAG, "popup.onDismissed — success=" + success);
                 finishWithResult(success);
             }
 
             @Override
             public void onExpanded()
             {
+                Log.d(TAG, "popup.onExpanded — pausing video and timer, hiding close button");
                 if (videoPlayer != null) videoPlayer.pause();
                 if (timerManager != null) timerManager.pause();
                 uiManager.hideCloseButton();
@@ -188,14 +190,20 @@ public class AdActivity extends Activity implements
             @Override
             public void onCollapsed()
             {
-                if (!isFinishing() && videoPlayer != null) videoPlayer.resume();
-                if (!isFinishing() && timerManager != null) timerManager.resume();
+                Log.d(TAG, "popup.onCollapsed — resumingFromPlayOverlay=" + resumingFromPlayOverlay + " closeButtonEarned=" + closeButtonEarned);
+                if (!resumingFromPlayOverlay)
+                {
+                    // StoreOpener fallback path — onResume won't fire, so resume here
+                    if (!isFinishing() && videoPlayer != null) videoPlayer.resume();
+                    if (!isFinishing() && timerManager != null) timerManager.resume();
+                }
                 if (closeButtonEarned) uiManager.showCloseButton();
             }
 
             @Override
             public void onAdClicked()
             {
+                Log.d(TAG, "popup.onAdClicked — firing callback");
                 if (callback != null) callback.onAdClicked();
             }
         });
@@ -203,17 +211,26 @@ public class AdActivity extends Activity implements
     }
 
     private void notifyAdStarted() {
+        if (adStartedFired) {
+            Log.d(TAG, "notifyAdStarted — already fired, skipping duplicate");
+            return;
+        }
+        adStartedFired = true;
+        Log.d(TAG, "notifyAdStarted — firing onAdStarted callback");
         if (callback != null) callback.onAdStarted();
     }
 
     private void startAd() {
+        Log.d(TAG, "startAd — loading video: " + config.videoPath);
         videoPlayer.load(config.videoPath, true);
         prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
     }
 
     private void finishWithResult(boolean success) {
+        Log.d(TAG, "finishWithResult: success=" + success + " resultSent=" + resultSent);
         if (resultSent) return;
         resultSent = true;
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         unregisterBackCallback();
         if (popup != null) { popup.cancel(); popup = null; }
@@ -222,24 +239,33 @@ public class AdActivity extends Activity implements
         if (callback != null) callback.onAdFinished(success);
         callback = null;
         finish();
+        overridePendingTransition(0, R.anim.slide_out_bottom);
     }
 
     @Override public void onCloseClicked() {
-        // Interstitial: always success (ad was displayed)
-        // Rewarded: success only if video was fully watched
         boolean success = config.isRewarded ? isFullyWatched : true;
+        Log.d(TAG, "onCloseClicked — isRewarded=" + config.isRewarded + " isFullyWatched=" + isFullyWatched + " success=" + success);
         finishWithResult(success);
     }
-    @Override public void onMuteClicked() { audioManager.toggleMute(); uiManager.updateMuteButton(audioManager.isMuted()); }
+    @Override public void onMuteClicked() {
+        audioManager.toggleMute();
+        uiManager.updateMuteButton(audioManager.isMuted());
+        Log.d(TAG, "onMuteClicked — isMuted=" + audioManager.isMuted());
+    }
     @Override public void onVideoPrepared(MediaPlayer mp) {
+        boolean firstPrepare = !adStartedFired;
+        Log.d(TAG, "onVideoPrepared — firstPrepare=" + firstPrepare + " peekDelay=" + config.peekDelay);
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
-        notifyAdStarted(); // Fire only after MediaPlayer confirms the file is valid and playback begins
+        notifyAdStarted();
         audioManager.setMediaPlayer(mp);
-        timerManager.start();
-        popup.schedulePeek(config.peekDelay);
+        if (firstPrepare) {
+            timerManager.start();
+            popup.schedulePeek(config.peekDelay);
+        }
     }
 
     @Override public void onVideoCompleted() {
+        Log.d(TAG, "onVideoCompleted — isRewarded=" + config.isRewarded);
         if (config.isRewarded) {
             isFullyWatched = true;
             uiManager.showRewardEarned();
@@ -257,8 +283,6 @@ public class AdActivity extends Activity implements
     @Override public void onCountdownTick(int rem) {
         uiManager.updateCountdown(rem);
         if (config.isRewarded && !isFullyWatched) {
-            // Use max(current, lastPaused) so the timer holds its correct pre-pause value
-            // during the keyframe catch-up window after resume, instead of jumping forward.
             int pos = Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition());
             timerManager.updateRewardTimer(pos, videoPlayer.getDuration());
         }
@@ -266,17 +290,19 @@ public class AdActivity extends Activity implements
 
     @Override public void onCountdownComplete()
     {
+        Log.d(TAG, "onCountdownComplete — close button earned, popupExpanded=" + (popup != null && popup.isExpanded()));
         closeButtonEarned = true;
         if (popup == null || !popup.isExpanded()) uiManager.showCloseButton();
     }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
 
     private void handleBackNavigation() {
-        // Let the popup consume back first if it is expanded
+        boolean closeVisible = uiManager != null && uiManager.isCloseButtonVisible();
+        Log.d(TAG, "handleBackNavigation — closeButtonVisible=" + closeVisible);
         if (popup != null && popup.handleBackPress()) {
             return;
         }
-        if (uiManager != null && uiManager.isCloseButtonVisible()) {
+        if (closeVisible) {
             boolean success = config.isRewarded ? isFullyWatched : true;
             finishWithResult(success);
         }
@@ -311,27 +337,38 @@ public class AdActivity extends Activity implements
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        Log.d(TAG, "onActivityResult: requestCode=" + requestCode + " resultCode=" + resultCode
+                + " isPlayOverlay=" + (requestCode == AdPopup.REQUEST_PLAY_OVERLAY));
+        if (requestCode == AdPopup.REQUEST_PLAY_OVERLAY && popup != null) {
+            resumingFromPlayOverlay = true; // onResume fires after this — let it do the resume
+            popup.onPlayOverlayResult();
+        }
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
+        Log.d(TAG, "onPause — pausing video and timer");
         if (videoPlayer != null) videoPlayer.pause();
         if (timerManager != null) timerManager.pause();
-        if (popup != null) popup.pauseWebContent();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        pausedByAudioFocus = false; // lifecycle resume takes precedence; prevents double resume from focus callback
+        boolean popupExpanded = popup != null && popup.isExpanded();
+        Log.d(TAG, "onResume — popupExpanded=" + popupExpanded + " isFinishing=" + isFinishing() + " resumingFromPlayOverlay=" + resumingFromPlayOverlay);
+        pausedByAudioFocus = false;
         if (uiManager != null) {
             uiManager.setupFullscreen();
             uiManager.applyInsets();
         }
-        // Do not resume video/timer if the popup is expanded — it paused them intentionally.
-        // But do resume the WebView so its JS and network activity continue.
-        boolean popupExpanded = popup != null && popup.isExpanded();
-        if (popupExpanded) {
-            popup.resumeWebContent();
-        } else if (!isFinishing() && videoPlayer != null && timerManager != null) {
+        // Do not resume video/timer while the Play Store overlay is still active —
+        // onPlayOverlayResult() handles resume when the overlay is dismissed.
+        if (!popupExpanded && !isFinishing() && videoPlayer != null && timerManager != null) {
+            resumingFromPlayOverlay = false;
             videoPlayer.resume();
             timerManager.resume();
         }
@@ -340,6 +377,7 @@ public class AdActivity extends Activity implements
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        Log.d(TAG, "onDestroy — resultSent=" + resultSent);
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         if (!resultSent && callback != null) { callback.onAdFinished(false); callback = null; }
         if (currentInstanceRef != null && currentInstanceRef.get() == this) { currentInstanceRef.clear(); currentInstanceRef = null; }

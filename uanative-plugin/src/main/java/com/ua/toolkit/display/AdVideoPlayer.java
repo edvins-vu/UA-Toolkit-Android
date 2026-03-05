@@ -1,6 +1,7 @@
 package com.ua.toolkit.display;
 
 import android.media.MediaPlayer;
+import android.os.Build;
 import android.util.Log;
 import android.widget.VideoView;
 
@@ -39,9 +40,29 @@ public class AdVideoPlayer
 
         videoView.setOnPreparedListener(mp ->
         {
-            Log.d(TAG, "Video prepared");
-            listener.onVideoPrepared(mp);
-            videoView.start();
+            if (savedPosition > 0)
+            {
+                final int seekTarget = savedPosition;
+                savedPosition = 0;
+                Log.d(TAG, "Video re-prepared — seeking to " + seekTarget + "ms (SEEK_CLOSEST)");
+                listener.onVideoPrepared(mp);
+                videoView.pause(); // sets mTargetState=STATE_PAUSED → blocks VideoView auto-start
+                mp.setOnSeekCompleteListener(m ->
+                {
+                    m.setOnSeekCompleteListener(null);
+                    videoView.start();
+                });
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    mp.seekTo(seekTarget, MediaPlayer.SEEK_CLOSEST);
+                else
+                    mp.seekTo(seekTarget);
+            }
+            else
+            {
+                Log.d(TAG, "Video prepared — starting from beginning");
+                listener.onVideoPrepared(mp);
+                videoView.start();
+            }
         });
 
         videoView.setOnCompletionListener(mp ->
@@ -109,15 +130,14 @@ public class AdVideoPlayer
     {
         if (videoView != null)
         {
-            if (savedPosition > 0)
+            int pos = videoView.getCurrentPosition();
+            Log.d(TAG, "Video resume (savedPosition=" + savedPosition + " currentPosition=" + pos + ")");
+            if (pos > 0)
             {
-                // Seek and start immediately. VideoView performs the seek asynchronously while
-                // playback starts — no callback required and no deadlock possible.
-                // The timer in AdActivity uses Math.max(currentPosition, lastPausedPosition)
-                // to hold the correct value during the keyframe catch-up window.
-                videoView.seekTo(savedPosition);
-                Log.d(TAG, "Video resuming from position: " + savedPosition);
-                savedPosition = 0;
+                // Seek to current position before starting — forces the SurfaceView to decode
+                // and display the current frame immediately, preventing the black flash that
+                // occurs when the surface is recreated after returning from the Play Store.
+                videoView.seekTo(pos);
             }
             videoView.start();
         }

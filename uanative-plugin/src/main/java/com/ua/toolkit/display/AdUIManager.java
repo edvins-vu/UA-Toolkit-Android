@@ -30,6 +30,8 @@ public class AdUIManager
     private final Activity activity;
     private final Listener listener;
     private final boolean isRewarded;
+    private String rewardCountdownText = "Reward in: %ds";
+    private String rewardEarnedText    = "Reward earned!";
 
     // Views
     private FrameLayout rootLayout;
@@ -47,11 +49,16 @@ public class AdUIManager
     private int savedBottomInset = 0;
     private boolean insetsApplied = false;
 
-    public AdUIManager(Activity activity, Listener listener, boolean isRewarded)
+    public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
+                       String rewardCountdownText, String rewardEarnedText)
     {
         this.activity = activity;
         this.listener = listener;
         this.isRewarded = isRewarded;
+        if (rewardCountdownText != null && !rewardCountdownText.isEmpty())
+            this.rewardCountdownText = rewardCountdownText;
+        if (rewardEarnedText != null && !rewardEarnedText.isEmpty())
+            this.rewardEarnedText = rewardEarnedText;
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -94,15 +101,22 @@ public class AdUIManager
         muteButton = new Button(activity);
         muteButton.setText("🔊");
         muteButton.setTextColor(Color.WHITE);
-        muteButton.setTextSize(18);
+        muteButton.setTextSize(14);
+        muteButton.setIncludeFontPadding(false);
+        muteButton.setMinHeight(0);
+        muteButton.setMinimumHeight(0);
+        muteButton.setMinWidth(0);
+        muteButton.setMinimumWidth(0);
+        muteButton.setPadding(0, 0, 0, 0);
+        muteButton.setGravity(Gravity.CENTER);
 
         GradientDrawable bg = createCircleBackground();
         muteButton.setBackground(bg);
         clearBackgroundTint(muteButton);
 
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(40), dpToPx(40), Gravity.TOP | Gravity.START);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.TOP | Gravity.START);
         params.topMargin = dpToPx(8);
-        params.leftMargin = dpToPx(14);
+        params.leftMargin = dpToPx(20);
         muteButton.setLayoutParams(params);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
     }
@@ -111,12 +125,12 @@ public class AdUIManager
     {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor("#80000000"));
-        bg.setCornerRadius(dpToPx(33));
+        bg.setCornerRadius(dpToPx(23));
 
         timerText = new TextView(activity);
         timerText.setTextColor(Color.WHITE);
-        timerText.setTextSize(16);
-        timerText.setPadding(dpToPx(17), dpToPx(8), dpToPx(17), dpToPx(8));
+        timerText.setTextSize(11);
+        timerText.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
         timerText.setVisibility(isRewarded ? View.VISIBLE : View.GONE);
@@ -134,7 +148,7 @@ public class AdUIManager
         buttonContainer = new FrameLayout(activity);
         FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.TOP | Gravity.END);
         containerParams.topMargin = dpToPx(8);
-        containerParams.rightMargin = dpToPx(14);
+        containerParams.rightMargin = dpToPx(20);
         buttonContainer.setLayoutParams(containerParams);
 
         // Countdown text
@@ -197,24 +211,25 @@ public class AdUIManager
 
     public void applyInsets()
     {
-        if (savedTopInset <= 0 && !insetsApplied) return;
+        if (insetsApplied) return;
+        if (savedTopInset <= 0 && savedLeftInset <= 0 && savedRightInset <= 0) return;
         insetsApplied = true;
 
         // Mute button
         FrameLayout.LayoutParams lpM = (FrameLayout.LayoutParams) muteButton.getLayoutParams();
-        lpM.topMargin = savedTopInset + 20;
-        lpM.leftMargin = savedLeftInset + 40;
+        lpM.topMargin = savedTopInset + dpToPx(20);
+        lpM.leftMargin = savedLeftInset + dpToPx(20);
         muteButton.setLayoutParams(lpM);
 
         // Timer text
         FrameLayout.LayoutParams lpT = (FrameLayout.LayoutParams) timerText.getLayoutParams();
-        lpT.topMargin = savedTopInset + 20;
+        lpT.topMargin = savedTopInset + dpToPx(20);
         timerText.setLayoutParams(lpT);
 
         // Button container
         FrameLayout.LayoutParams lpC = (FrameLayout.LayoutParams) buttonContainer.getLayoutParams();
-        lpC.topMargin = savedTopInset + 20;
-        lpC.rightMargin = savedRightInset + 40;
+        lpC.topMargin = savedTopInset + dpToPx(20);
+        lpC.rightMargin = savedRightInset + dpToPx(20);
         buttonContainer.setLayoutParams(lpC);
     }
 
@@ -266,7 +281,7 @@ public class AdUIManager
         if (timerText != null && seconds != lastRewardTimerValue)
         {
             lastRewardTimerValue = seconds;
-            timerText.setText("Reward in: " + seconds + "s");
+            timerText.setText(String.format(rewardCountdownText, seconds));
         }
     }
 
@@ -274,7 +289,7 @@ public class AdUIManager
     {
         if (timerText != null)
         {
-            timerText.setText("✓ Reward earned!");
+            timerText.setText(rewardEarnedText);
         }
     }
 
@@ -320,8 +335,7 @@ public class AdUIManager
     {
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Color.parseColor("#AA000000"));
-        bg.setStroke(dpToPx(1.5f), Color.WHITE);
+        bg.setColor(Color.parseColor("#80000000"));
         return bg;
     }
 

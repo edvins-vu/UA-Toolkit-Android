@@ -24,6 +24,7 @@ public class AdTimerManager
     private long pauseTime = 0;
     private boolean closeButtonShown = false;
     private boolean isStarted = false;
+    private boolean rewardEarned = false;
     private Runnable updateTask;
 
     public AdTimerManager(Listener listener, int closeButtonDelay, boolean isRewarded)
@@ -46,7 +47,7 @@ public class AdTimerManager
             public void run()
             {
                 update();
-                if (!closeButtonShown || isRewarded)
+                if (!closeButtonShown || (isRewarded && !rewardEarned))
                 {
                     handler.postDelayed(this, 100);
                 }
@@ -118,6 +119,11 @@ public class AdTimerManager
             int remaining = Math.max(0, (videoDuration - videoPosition) / 1000);
             listener.onRewardTimerTick(remaining);
         }
+    }
+
+    public void markRewardEarned()
+    {
+        rewardEarned = true;
     }
 
     public boolean isCloseButtonShown()

@@ -30,6 +30,7 @@ public class AdAudioManager
     private AudioFocusRequest audioFocusRequest; // API 26+ only
     private MediaPlayer mediaPlayer;
     private boolean isMuted = false;
+    private boolean isDucked = false;
     private FocusChangeListener focusChangeListener;
 
     private final AudioManager.OnAudioFocusChangeListener internalFocusListener = focusChange ->
@@ -45,11 +46,13 @@ public class AdAudioManager
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
                 // Lower volume rather than pausing — short sounds like notifications
                 Log.d(TAG, "Audio focus duck — lowering volume");
-                if (mediaPlayer != null) mediaPlayer.setVolume(0.2f, 0.2f);
+                isDucked = true;
+                applyMuteState();
                 break;
 
             case AudioManager.AUDIOFOCUS_GAIN:
                 Log.d(TAG, "Audio focus gained — restoring ad audio");
+                isDucked = false;
                 applyMuteState(); // restores correct volume, respects mute toggle
                 if (focusChangeListener != null) focusChangeListener.onAudioFocusResume();
                 break;
@@ -124,7 +127,7 @@ public class AdAudioManager
     {
         if (mediaPlayer != null)
         {
-            float volume = isMuted ? 0.0f : 1.0f;
+            float volume = isDucked ? 0.2f : (isMuted ? 0.0f : 1.0f);
             mediaPlayer.setVolume(volume, volume);
         }
     }

@@ -43,6 +43,7 @@ public class AdActivity extends Activity implements
     private boolean closeButtonEarned = false;
     private boolean resumingFromPlayOverlay = false;
     private boolean adStartedFired = false;
+    private int savedVideoPosition = 0;
     private OnBackInvokedCallback backCallback; // API 33+
 
     private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
@@ -64,7 +65,6 @@ public class AdActivity extends Activity implements
         parseIntentConfig();
         Log.d(TAG, "config: videoPath=" + config.videoPath
                 + " bundleId=" + config.bundleId
-                + " appName=" + config.appName
                 + " clickUrl=" + config.clickUrl
                 + " isRewarded=" + config.isRewarded
                 + " closeButtonDelay=" + config.closeButtonDelay
@@ -80,7 +80,38 @@ public class AdActivity extends Activity implements
             return;
         }
 
+        if (savedInstanceState != null)
+        {
+            if (callback == null)
+            {
+                // Process was killed by the OS while the store was open — Unity receiver is gone.
+                // Finish cleanly rather than leaving a zombie activity with no callback target.
+                Log.w(TAG, "onCreate: process death detected (callback=null) — finishing gracefully");
+                finish();
+                return;
+            }
+            // Activity recreated but process survived — restore reward-critical state.
+            isFullyWatched    = savedInstanceState.getBoolean("isFullyWatched", false);
+            closeButtonEarned = savedInstanceState.getBoolean("closeButtonEarned", false);
+            savedVideoPosition = savedInstanceState.getInt("videoPosition", 0);
+            Log.d(TAG, "onCreate: state restored — isFullyWatched=" + isFullyWatched
+                    + " closeButtonEarned=" + closeButtonEarned
+                    + " videoPosition=" + savedVideoPosition);
+        }
+
         initializeManagers();
+
+        // Restore saved video position (process death / activity recreation path)
+        if (savedVideoPosition > 0)
+        {
+            videoPlayer.setSavedPosition(savedVideoPosition);
+            savedVideoPosition = 0;
+        }
+
+        // Reapply earned UI state after manager setup (restoration path)
+        if (isFullyWatched)        { uiManager.showRewardEarned(); uiManager.showCloseButton(); }
+        else if (closeButtonEarned) { uiManager.showCloseButton(); }
+
         overridePendingTransition(R.anim.slide_in_bottom, 0);
         registerBackCallback();
         startAd();
@@ -118,10 +149,8 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("CLICK_URL"),
                 getIntent().getBooleanExtra("IS_REWARDED", false),
                 getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
-                getIntent().getStringExtra("ICON_PATH"),
                 getIntent().getIntExtra("POPUP_PEEK_DELAY", 5),
                 getIntent().getStringExtra("BUNDLE_ID"),
-                getIntent().getStringExtra("APP_NAME"),
                 getIntent().getStringExtra("GET_BUTTON_TEXT"),
                 getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
                 getIntent().getStringExtra("REWARD_EARNED_TEXT")
@@ -151,7 +180,8 @@ public class AdActivity extends Activity implements
             public void onAudioFocusResume()
             {
                 Log.d(TAG, "onAudioFocusResume — pausedByAudioFocus=" + pausedByAudioFocus);
-                if (pausedByAudioFocus && !isFinishing() && videoPlayer != null && timerManager != null)
+                if (pausedByAudioFocus && !isFinishing() && videoPlayer != null && timerManager != null
+                        && (popup == null || !popup.isExpanded()))
                 {
                     pausedByAudioFocus = false;
                     videoPlayer.resume();
@@ -193,11 +223,13 @@ public class AdActivity extends Activity implements
                 Log.d(TAG, "popup.onCollapsed — resumingFromPlayOverlay=" + resumingFromPlayOverlay + " closeButtonEarned=" + closeButtonEarned);
                 if (!resumingFromPlayOverlay)
                 {
-                    // StoreOpener fallback path — onResume won't fire, so resume here
+                    // StoreOpener fallback — resume preemptively in case activity lifecycle
+                    // doesn't fire (e.g. store fails to open silently). onResume will also
+                    // resume on normal return, which is a harmless no-op on an already-playing video.
                     if (!isFinishing() && videoPlayer != null) videoPlayer.resume();
                     if (!isFinishing() && timerManager != null) timerManager.resume();
                 }
-                if (closeButtonEarned) uiManager.showCloseButton();
+                if (closeButtonEarned || isFullyWatched) uiManager.showCloseButton();
             }
 
             @Override
@@ -208,6 +240,12 @@ public class AdActivity extends Activity implements
             }
         });
         popup.attach(config);
+
+        // Once insets are known, push them to AdPopup so cards sit above the navigation bar.
+        // insetsApplied is one-shot so this fires exactly once per activity lifecycle.
+        uiManager.setInsetsReadyCallback((bottomInset, rightInset) -> {
+            if (popup != null) popup.applyInsets(bottomInset, rightInset);
+        });
     }
 
     private void notifyAdStarted() {
@@ -265,9 +303,10 @@ public class AdActivity extends Activity implements
     }
 
     @Override public void onVideoCompleted() {
-        Log.d(TAG, "onVideoCompleted — isRewarded=" + config.isRewarded);
-        if (config.isRewarded) {
+        Log.d(TAG, "onVideoCompleted — isRewarded=" + config.isRewarded + " isFullyWatched=" + isFullyWatched);
+        if (config.isRewarded && !isFullyWatched) {
             isFullyWatched = true;
+            timerManager.markRewardEarned();
             uiManager.showRewardEarned();
             uiManager.showCloseButton();
         }
@@ -281,7 +320,9 @@ public class AdActivity extends Activity implements
         finishWithResult(false);
     }
     @Override public void onCountdownTick(int rem) {
-        uiManager.updateCountdown(rem);
+        if (!config.isRewarded && !closeButtonEarned && (config.closeButtonDelay - rem) >= 3) {
+            uiManager.showSkipButton();
+        }
         if (config.isRewarded && !isFullyWatched) {
             int pos = Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition());
             timerManager.updateRewardTimer(pos, videoPlayer.getDuration());
@@ -350,8 +391,8 @@ public class AdActivity extends Activity implements
     @Override
     protected void onPause() {
         super.onPause();
-        Log.d(TAG, "onPause — pausing video and timer");
-        if (videoPlayer != null) videoPlayer.pause();
+        Log.d(TAG, "onPause — suspending video and pausing timer");
+        if (videoPlayer != null) videoPlayer.suspend();
         if (timerManager != null) timerManager.pause();
     }
 
@@ -363,7 +404,9 @@ public class AdActivity extends Activity implements
         pausedByAudioFocus = false;
         if (uiManager != null) {
             uiManager.setupFullscreen();
-            uiManager.applyInsets();
+            // Re-assert close button — it may have been hidden by onExpanded() before the store opened
+            if ((isFullyWatched || closeButtonEarned) && (popup == null || !popup.isExpanded()))
+                uiManager.showCloseButton();
         }
         // Do not resume video/timer while the Play Store overlay is still active —
         // onPlayOverlayResult() handles resume when the overlay is dismissed.
@@ -372,6 +415,20 @@ public class AdActivity extends Activity implements
             videoPlayer.resume();
             timerManager.resume();
         }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState)
+    {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean("isFullyWatched", isFullyWatched);
+        outState.putBoolean("closeButtonEarned", closeButtonEarned);
+        int pos = videoPlayer != null
+                ? Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition())
+                : 0;
+        outState.putInt("videoPosition", pos);
+        Log.d(TAG, "onSaveInstanceState — isFullyWatched=" + isFullyWatched
+                + " closeButtonEarned=" + closeButtonEarned + " videoPosition=" + pos);
     }
 
     @Override

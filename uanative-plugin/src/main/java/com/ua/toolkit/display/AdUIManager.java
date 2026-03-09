@@ -8,8 +8,10 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -27,6 +29,12 @@ public class AdUIManager
         void onVideoTouched();
     }
 
+    /** Fired once, after the first valid inset dispatch — AdPopup uses this to position cards. */
+    public interface InsetsReadyCallback
+    {
+        void onInsetsReady(int bottomInset, int rightInset);
+    }
+
     private final Activity activity;
     private final Listener listener;
     private final boolean isRewarded;
@@ -38,7 +46,7 @@ public class AdUIManager
     private VideoView videoView;
     private Button muteButton;
     private TextView timerText;
-    private TextView countdownText;
+    private TextView skipButton;
     private TextView closeButton;
     private FrameLayout buttonContainer;
 
@@ -47,7 +55,8 @@ public class AdUIManager
     private int savedLeftInset = 0;
     private int savedRightInset = 0;
     private int savedBottomInset = 0;
-    private boolean insetsApplied = false;
+    private boolean insetsApplied = false; // guard: only apply once — overlays cause transient re-dispatches
+    private InsetsReadyCallback insetsReadyCallback;
 
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
@@ -61,9 +70,37 @@ public class AdUIManager
             this.rewardEarnedText = rewardEarnedText;
     }
 
+    public void setInsetsReadyCallback(InsetsReadyCallback cb)
+    {
+        insetsReadyCallback = cb;
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     public void setupUI()
     {
+        Window window = activity.getWindow();
+
+        // 1. Modern Edge-to-Edge Setup
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false);
+        }
+
+        // 2. Cutout and Bar Transparency (Essential for Xiaomi)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            window.setAttributes(lp);
+        }
+
+        // FLAG_LAYOUT_NO_LIMITS bypasses MIUI/HyperOS safe-area enforcement at the WindowManager
+        // level, ensuring the window extends to physical screen edges past the display cutout.
+        window.addFlags(
+                WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS |
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        );
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+
         rootLayout = new FrameLayout(activity);
         rootLayout.setBackgroundColor(Color.BLACK);
 
@@ -84,8 +121,15 @@ public class AdUIManager
     @SuppressLint("ClickableViewAccessibility")
     private void createVideoView()
     {
-        videoView = new VideoView(activity);
-        videoView.setLayoutParams(new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        // FillVideoView overrides onMeasure to skip VideoView's built-in aspect-ratio
+        // correction, ensuring the surface fills the screen on any device ratio (16:9, 20:9, etc.)
+        videoView = new FillVideoView(activity);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER);
+        videoView.setLayoutParams(params);
+
         videoView.setOnTouchListener((v, event) ->
         {
             if (event.getAction() == android.view.MotionEvent.ACTION_UP)
@@ -110,11 +154,10 @@ public class AdUIManager
         muteButton.setPadding(0, 0, 0, 0);
         muteButton.setGravity(Gravity.CENTER);
 
-        GradientDrawable bg = createCircleBackground();
-        muteButton.setBackground(bg);
+        muteButton.setBackground(createRoundedBackground(dpToPx(8)));
         clearBackgroundTint(muteButton);
 
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.TOP | Gravity.START);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(28), dpToPx(28), Gravity.TOP | Gravity.START);
         params.topMargin = dpToPx(8);
         params.leftMargin = dpToPx(20);
         muteButton.setLayoutParams(params);
@@ -146,26 +189,31 @@ public class AdUIManager
     private void createButtonContainer()
     {
         buttonContainer = new FrameLayout(activity);
-        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dpToPx(24), dpToPx(24), Gravity.TOP | Gravity.END);
+        // WRAP_CONTENT so the container expands to accommodate inset padding applied in applyInsets()
+        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, dpToPx(28), Gravity.TOP | Gravity.END);
         containerParams.topMargin = dpToPx(8);
-        containerParams.rightMargin = dpToPx(20);
+        containerParams.rightMargin = dpToPx(28); // minimal initial value; zeroed in applyInsets()
         buttonContainer.setLayoutParams(containerParams);
 
-        // Countdown text
-        countdownText = new TextView(activity);
-        countdownText.setTextColor(Color.argb(150, 255, 255, 255));
-        countdownText.setTextSize(10);
-        countdownText.setGravity(Gravity.CENTER);
-        countdownText.setIncludeFontPadding(false);
-        countdownText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        countdownText.setBackground(createTransparentCircleBackground());
-        countdownText.setPadding(0, 0, 0, 0);
-        countdownText.setMinHeight(0);
-        countdownText.setMinimumHeight(0);
-        countdownText.setMinWidth(0);
-        countdownText.setMinimumWidth(0);
-        countdownText.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER));
-        countdownText.setVisibility(isRewarded ? View.GONE : View.VISIBLE);
+        // Skip button — shown after 3 s; tap immediately reveals close button
+        skipButton = new TextView(activity);
+        skipButton.setText("⏭");
+        skipButton.setTextColor(Color.argb(150, 255, 255, 255));
+        skipButton.setTextSize(15);
+        skipButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        skipButton.setGravity(Gravity.CENTER);
+        skipButton.setIncludeFontPadding(false);
+        skipButton.setBackground(createRoundedBackground(dpToPx(8)));
+        skipButton.setPadding(0, 0, 0, 0);
+        skipButton.setMinHeight(0);
+        skipButton.setMinimumHeight(0);
+        skipButton.setMinWidth(0);
+        skipButton.setMinimumWidth(0);
+        // Rectangular — wider than tall to match iOS skip button shape
+        skipButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(56), dpToPx(28), Gravity.CENTER));
+        skipButton.setVisibility(View.GONE);
+        skipButton.setOnClickListener(v -> showCloseButton());
 
         // Close button (using TextView to avoid Button's internal padding/min size)
         closeButton = new TextView(activity);
@@ -176,7 +224,7 @@ public class AdUIManager
         closeButton.setGravity(Gravity.CENTER);
         closeButton.setIncludeFontPadding(false);
         closeButton.setVisibility(View.GONE);
-        closeButton.setBackground(createCircleBackground());
+        closeButton.setBackground(createRoundedBackground(dpToPx(8)));
         closeButton.setPadding(0, 0, 0, 0);
         closeButton.setMinHeight(0);
         closeButton.setMinimumHeight(0);
@@ -185,7 +233,7 @@ public class AdUIManager
         closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER));
         closeButton.setOnClickListener(v -> listener.onCloseClicked());
 
-        buttonContainer.addView(countdownText);
+        buttonContainer.addView(skipButton);
         buttonContainer.addView(closeButton);
     }
 
@@ -193,17 +241,55 @@ public class AdUIManager
     {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
         {
+            // API 30+: use the typed insets API which combines systemBars + displayCutout
             rootLayout.setOnApplyWindowInsetsListener((v, insets) ->
             {
-                android.graphics.Insets bars = insets.getInsets(
-                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-
-                savedTopInset = bars.top;
-                savedLeftInset = bars.left;
-                savedRightInset = bars.right;
-                savedBottomInset = bars.bottom;
-
-                applyInsets();
+                // Values AND apply are both guarded — overlay re-dispatches (e.g. Play Store
+                // half-sheet) must not overwrite the frozen inset values or re-position buttons.
+                if (!insetsApplied)
+                {
+                    android.graphics.Insets bars = insets.getInsets(
+                            WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                    savedTopInset   = bars.top;
+                    savedLeftInset  = bars.left;
+                    savedRightInset = bars.right;
+                    // FLAG_LAYOUT_NO_LIMITS causes systemBars() bottom to report 0 even when a
+                    // physical nav bar exists. getInsetsIgnoringVisibility gives the real height.
+                    android.graphics.Insets nav = insets.getInsetsIgnoringVisibility(
+                            WindowInsets.Type.navigationBars());
+                    savedBottomInset = Math.max(bars.bottom, nav.bottom);
+                    insetsApplied = true;
+                    applyInsets();
+                }
+                return insets;
+            });
+        }
+        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+        {
+            // API 28–29: DisplayCutout was added in API 28 but the typed API requires API 30.
+            // Read cutout safe insets directly; fall back to system window insets if no cutout.
+            rootLayout.setOnApplyWindowInsetsListener((v, insets) ->
+            {
+                if (!insetsApplied)
+                {
+                    android.view.DisplayCutout cutout = insets.getDisplayCutout();
+                    if (cutout != null)
+                    {
+                        savedTopInset    = cutout.getSafeInsetTop();
+                        savedLeftInset   = cutout.getSafeInsetLeft();
+                        savedRightInset  = cutout.getSafeInsetRight();
+                        savedBottomInset = cutout.getSafeInsetBottom();
+                    }
+                    else
+                    {
+                        savedTopInset    = insets.getSystemWindowInsetTop();
+                        savedLeftInset   = insets.getSystemWindowInsetLeft();
+                        savedRightInset  = insets.getSystemWindowInsetRight();
+                        savedBottomInset = insets.getSystemWindowInsetBottom();
+                    }
+                    insetsApplied = true;
+                    applyInsets();
+                }
                 return insets;
             });
         }
@@ -211,26 +297,32 @@ public class AdUIManager
 
     public void applyInsets()
     {
-        if (insetsApplied) return;
-        if (savedTopInset <= 0 && savedLeftInset <= 0 && savedRightInset <= 0) return;
-        insetsApplied = true;
+        int top  = Math.max(savedTopInset,  dpToPx(8));
+        int left = savedLeftInset + dpToPx(20);
 
-        // Mute button
+        // Mute button — offset from left edge / notch via margin
         FrameLayout.LayoutParams lpM = (FrameLayout.LayoutParams) muteButton.getLayoutParams();
-        lpM.topMargin = savedTopInset + dpToPx(20);
-        lpM.leftMargin = savedLeftInset + dpToPx(20);
+        lpM.topMargin  = top;
+        lpM.leftMargin = left;
         muteButton.setLayoutParams(lpM);
 
-        // Timer text
+        // Timer text — stay centred but below notch / status bar
         FrameLayout.LayoutParams lpT = (FrameLayout.LayoutParams) timerText.getLayoutParams();
-        lpT.topMargin = savedTopInset + dpToPx(20);
+        lpT.topMargin = top;
         timerText.setLayoutParams(lpT);
 
-        // Button container
+        // Button container — sits flush at the right screen edge (rightMargin = 0).
+        // Right inset is applied as padding inside the container so the close/skip buttons
+        // are offset from the notch without creating any external margin or black bar.
         FrameLayout.LayoutParams lpC = (FrameLayout.LayoutParams) buttonContainer.getLayoutParams();
-        lpC.topMargin = savedTopInset + dpToPx(20);
-        lpC.rightMargin = savedRightInset + dpToPx(20);
+        lpC.topMargin   = top;
+        lpC.rightMargin = 0;
         buttonContainer.setLayoutParams(lpC);
+        buttonContainer.setPadding(0, 0, savedRightInset + dpToPx(28), 0);
+
+        // Notify popup so it can position its cards above the navigation bar
+        if (insetsReadyCallback != null)
+            insetsReadyCallback.onInsetsReady(savedBottomInset, savedRightInset);
     }
 
     public void setupFullscreen()
@@ -238,8 +330,20 @@ public class AdUIManager
         if (activity.getWindow() == null) return;
         View decorView = activity.getWindow().getDecorView();
 
+        // Re-apply cutout mode on every call — MIUI/HyperOS resets window attributes on resume.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+        {
+            WindowManager.LayoutParams lp = activity.getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            activity.getWindow().setAttributes(lp);
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
         {
+            // Re-apply edge-to-edge and MIUI bypass flags — HyperOS may reset these on resume.
+            activity.getWindow().setDecorFitsSystemWindows(false);
+            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+
             WindowInsetsController controller = decorView.getWindowInsetsController();
             if (controller != null)
             {
@@ -257,21 +361,15 @@ public class AdUIManager
                             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                             View.SYSTEM_UI_FLAG_FULLSCREEN);
         }
+
+        // Force re-dispatch of display-cutout insets after fullscreen flags settle.
+        if (rootLayout != null)
+        {
+            rootLayout.requestApplyInsets();
+        }
     }
 
     // --- UI Update Methods ---
-
-    private int lastCountdownValue = -1;
-
-    @SuppressLint("SetTextI18n")
-    public void updateCountdown(int seconds)
-    {
-        if (countdownText != null && seconds != lastCountdownValue)
-        {
-            lastCountdownValue = seconds;
-            countdownText.setText(String.valueOf(seconds));
-        }
-    }
 
     private int lastRewardTimerValue = -1;
 
@@ -293,9 +391,15 @@ public class AdUIManager
         }
     }
 
+    public void showSkipButton()
+    {
+        if (skipButton == null || skipButton.getVisibility() == View.VISIBLE) return;
+        skipButton.setVisibility(View.VISIBLE);
+    }
+
     public void showCloseButton()
     {
-        if (countdownText != null) countdownText.setVisibility(View.GONE);
+        if (skipButton != null) skipButton.setVisibility(View.GONE);
         if (closeButton != null) closeButton.setVisibility(View.VISIBLE);
     }
 
@@ -331,20 +435,19 @@ public class AdUIManager
 
     // --- Helpers ---
 
-    private GradientDrawable createCircleBackground()
+    /**
+     * Rounded-rectangle background matching iOS UAAdViewController button style:
+     *   backgroundColor = colorWithWhite:0.15 alpha:0.75  →  argb(191, 38, 38, 38)
+     *   borderWidth = 0.5 / borderColor = white alpha:0.2 →  argb(51, 255, 255, 255)
+     * Applied consistently to mute, skip, and close buttons for visual parity with iOS.
+     */
+    private GradientDrawable createRoundedBackground(int cornerRadius)
     {
         GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Color.parseColor("#80000000"));
-        return bg;
-    }
-
-    private GradientDrawable createTransparentCircleBackground()
-    {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Color.argb(80, 0, 0, 0));
-        bg.setStroke(dpToPx(1.5f), Color.argb(150, 255, 255, 255));
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(cornerRadius);
+        bg.setColor(Color.argb(191, 38, 38, 38));
+        bg.setStroke(dpToPx(0.75f), Color.argb(51, 255, 255, 255));
         return bg;
     }
 

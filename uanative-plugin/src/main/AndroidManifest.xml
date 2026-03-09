@@ -3,39 +3,30 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.ua.toolkit">
 
-    <!-- Required for the Stage 2 WebView to load URLs and for HeadlessWebViewResolver -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <package android:name="com.android.vending" />
         <package android:name="com.android.chrome" />
-
-        <!-- UA Toolkit: Game packages for install detection -->
-        <!-- Replace with your actual game package names -->
-        <package android:name="com.yourstudio.game1" />
-        <package android:name="com.yourstudio.game2" />
-        <package android:name="com.yourstudio.game3" />
     </queries>
 
     <application
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:hardwareAccelerated="true">
+
         <activity
             android:name=".AdActivity"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:theme="@style/AdSDK.Fullscreen"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:launchMode="singleTop"
             android:exported="true"
             android:hardwareAccelerated="true"
+            android:maxAspectRatio="9.9"
             tools:ignore="DiscouragedApi,LockedOrientationActivity">
 
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="i-am-cat" />
-            </intent-filter>
-
+            <meta-data android:name="android.max_aspect" android:value="9.9" />
         </activity>
+
     </application>
 </manifest>

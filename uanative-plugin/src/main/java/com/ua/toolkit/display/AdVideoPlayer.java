@@ -26,6 +26,8 @@ public class AdVideoPlayer
     private int savedPosition = 0;
     private int lastPausedPosition = 0;
     private String currentVideoPath;
+    private boolean currentLoopEnabled = false;
+    private boolean isSuspended = false;
 
     public AdVideoPlayer(VideoView videoView, Listener listener)
     {
@@ -36,10 +38,12 @@ public class AdVideoPlayer
     public void load(String videoPath, boolean loopVideo)
     {
         currentVideoPath = videoPath;
+        currentLoopEnabled = loopVideo;
         videoView.setVideoPath(videoPath);
 
         videoView.setOnPreparedListener(mp ->
         {
+            mp.setVideoScalingMode(MediaPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING);
             if (savedPosition > 0)
             {
                 final int seekTarget = savedPosition;
@@ -72,8 +76,8 @@ public class AdVideoPlayer
 
             if (loopVideo)
             {
-                mp.seekTo(0);
-                mp.start();
+                videoView.seekTo(0);
+                videoView.start();
             }
         });
 
@@ -126,21 +130,54 @@ public class AdVideoPlayer
         }
     }
 
-    public void resume()
+    /**
+     * Saves position and calls stopPlayback() to fully release the MediaPlayer,
+     * reducing RAM footprint while the activity is backgrounded.
+     * Call resume() to reload and resume from the saved position.
+     */
+    public void suspend()
     {
         if (videoView != null)
         {
-            int pos = videoView.getCurrentPosition();
-            Log.d(TAG, "Video resume (savedPosition=" + savedPosition + " currentPosition=" + pos + ")");
-            if (pos > 0)
+            if (videoView.isPlaying())
             {
-                // Seek to current position before starting — forces the SurfaceView to decode
-                // and display the current frame immediately, preventing the black flash that
-                // occurs when the surface is recreated after returning from the Play Store.
-                videoView.seekTo(pos);
+                savedPosition = videoView.getCurrentPosition();
+                lastPausedPosition = savedPosition;
             }
-            videoView.start();
+            Log.d(TAG, "suspend — stopPlayback at position=" + savedPosition);
+            videoView.stopPlayback();
+            isSuspended = true;
         }
+    }
+
+    public void resume()
+    {
+        if (videoView == null) return;
+        if (isSuspended)
+        {
+            // MediaPlayer was fully released — reload from saved position
+            isSuspended = false;
+            Log.d(TAG, "resume: was suspended — reloading from position=" + savedPosition);
+            load(currentVideoPath, currentLoopEnabled);
+            return;
+        }
+        int pos = videoView.getCurrentPosition();
+        Log.d(TAG, "Video resume (savedPosition=" + savedPosition + " currentPosition=" + pos + ")");
+        if (pos > 0)
+        {
+            // Seek to current position before starting — forces the SurfaceView to decode
+            // and display the current frame immediately, preventing the black flash that
+            // occurs when the surface is recreated after returning from the Play Store.
+            videoView.seekTo(pos);
+        }
+        videoView.start();
+    }
+
+    /** Restores video position from a saved bundle (process death recovery). */
+    public void setSavedPosition(int position)
+    {
+        this.savedPosition = position;
+        Log.d(TAG, "setSavedPosition: " + position);
     }
 
     public void stop()

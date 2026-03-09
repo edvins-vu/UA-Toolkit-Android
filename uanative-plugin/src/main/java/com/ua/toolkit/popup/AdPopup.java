@@ -1,8 +1,10 @@
 package com.ua.toolkit.popup;
 
 import com.ua.toolkit.AdConfig;
+import com.ua.toolkit.UAStoreLauncher;
 import com.ua.toolkit.store.StoreOpener;
 
+import android.animation.Animator;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
@@ -14,13 +16,12 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -57,8 +58,20 @@ public class AdPopup
     private State _state = State.HIDDEN;
 
     private String _bundleId;
-    private String _appName;
     private AdConfig _config;
+
+    private TextView _stage1GetButton;
+    private TextView _stage3GetButton;
+    private Animator _stage1PulseAnimator;
+    private Animator _stage3PulseAnimator;
+    private Runnable _stage1PulseRunnable;
+    private Runnable _stage3PulseRunnable;
+
+    // Insets — set once via applyInsets() when AdUIManager receives its first inset dispatch
+    private int _cardBottomInset = 0;
+    private int _cardRightInset  = 0;
+    // Timestamp of the last peek() call — guards against immediate store launch during animation
+    private long _peekTimeMs = 0;
 
     public AdPopup(Activity activity, FrameLayout rootLayout, Listener listener)
     {
@@ -73,12 +86,11 @@ public class AdPopup
     {
         _config = config;
         _bundleId = config.bundleId;
-        _appName = config.appName;
-        Log.d(TAG, "attach: bundleId=" + _bundleId + " appName=" + _appName
-                + " iconValid=" + config.hasValidIcon()
+        Log.d(TAG, "attach: bundleId=" + _bundleId
                 + " peekDelay=" + config.peekDelay
                 + " clickUrl=" + config.clickUrl);
 
+        _rootLayout.setClipChildren(false);
         buildStage1Card(config);
 
         // Insert at index 1 (above video surface at 0, below UIManager controls)
@@ -122,6 +134,13 @@ public class AdPopup
                 peek();
                 break;
             case PEEK:
+                // Guard: if the card is still animating in, ignore the tap so the user
+                // actually sees the popup before the store opens.
+                if (System.currentTimeMillis() - _peekTimeMs < ANIM_DURATION_MS)
+                {
+                    Log.d(TAG, "handleVideoTap: PEEK — tap within slide-in window, ignoring");
+                    break;
+                }
                 // Video tap while Stage 1 visible → same outcome as GET button
                 if (!_isAdClicked)
                 {
@@ -151,13 +170,49 @@ public class AdPopup
         _state = State.COLLAPSED;
         _listener.onCollapsed();
         showStage3Card();
+        // Restart the 5-second pulse countdown each time the user returns from the store
+        scheduleStage3Pulse();
+    }
+
+    /**
+     * Called once by AdActivity after AdUIManager fires its first inset dispatch.
+     * Updates both Stage 1 and Stage 3 card margins so they sit above the navigation bar.
+     * Stage 3 cards built later via showStage3Card() pick up _cardBottomInset automatically.
+     */
+    public void applyInsets(int bottomInset, int rightInset)
+    {
+        _cardBottomInset = bottomInset;
+        _cardRightInset  = rightInset;
+        int bottom = bottomInset + dpToPx(24);
+        int right  = rightInset  + dpToPx(24);
+        if (_stage1Card != null)
+        {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) _stage1Card.getLayoutParams();
+            lp.bottomMargin = bottom;
+            lp.rightMargin  = right;
+            _stage1Card.setLayoutParams(lp);
+        }
+        if (_stage3Card != null)
+        {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) _stage3Card.getLayoutParams();
+            lp.bottomMargin = bottom;
+            lp.rightMargin  = right;
+            _stage3Card.setLayoutParams(lp);
+        }
     }
 
     public void cancel()
     {
         Log.d(TAG, "cancel: state=" + _state + " stage1=" + (_stage1Card != null) + " stage3=" + (_stage3Card != null));
         _isCancelled = true;
+        UAStoreLauncher.cancel(); // stop any in-progress fallback store resolution
         _handler.removeCallbacksAndMessages(null);
+        if (_stage1PulseAnimator != null) { _stage1PulseAnimator.cancel(); _stage1PulseAnimator = null; }
+        if (_stage3PulseAnimator != null) { _stage3PulseAnimator.cancel(); _stage3PulseAnimator = null; }
+        if (_stage1GetButton != null) { _stage1GetButton.setScaleX(1f); _stage1GetButton.setScaleY(1f); }
+        if (_stage3GetButton != null) { _stage3GetButton.setScaleX(1f); _stage3GetButton.setScaleY(1f); }
+        _stage1PulseRunnable = null;
+        _stage3PulseRunnable = null;
         if (_stage3Card != null)
         {
             _stage3Card.animate().cancel();
@@ -176,51 +231,8 @@ public class AdPopup
 
     private void buildStage1Card(AdConfig config)
     {
-        int cardWidth = (int) (getScreenWidth() * 0.24f);
-
-        _stage1Card = new LinearLayout(_activity);
-        _stage1Card.setOrientation(LinearLayout.HORIZONTAL);
-        _stage1Card.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
-        _stage1Card.setPadding(dpToPx(10), dpToPx(12), dpToPx(10), dpToPx(12));
-
-        // Stage 1 popup
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(Color.parseColor("#80000000"));
-        cardBg.setCornerRadius(dpToPx(100)); // pill shape
-        _stage1Card.setBackground(cardBg);
-
-        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                cardWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
-        cardLp.rightMargin = dpToPx(24);
-        cardLp.bottomMargin = dpToPx(24);
-        _stage1Card.setLayoutParams(cardLp);
-
-        // App name
-        TextView nameText = new TextView(_activity);
-        String displayName = (_appName != null && !_appName.isEmpty()) ? _appName
-                : (_bundleId != null ? _bundleId : "");
-        Log.d(TAG, "buildStage1Card: displayName=\"" + displayName + "\" cardWidthPx=" + cardWidth);
-        nameText.setText(displayName);
-        nameText.setTextColor(Color.WHITE);
-        nameText.setTextSize(13);
-        nameText.setTypeface(Typeface.DEFAULT_BOLD);
-        nameText.setMaxLines(1);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-        {
-            nameText.setAutoSizeTextTypeUniformWithConfiguration(7, 13, 1, TypedValue.COMPLEX_UNIT_SP);
-        }
-        else
-        {
-            nameText.setEllipsize(TextUtils.TruncateAt.END);
-        }
-        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(
-                dpToPx(48), LinearLayout.LayoutParams.WRAP_CONTENT);
-        nameLp.rightMargin = dpToPx(8);
-        nameText.setLayoutParams(nameLp);
-        _stage1Card.addView(nameText);
-
-        addGetButton(_stage1Card, () ->
+        TextView[] btn = new TextView[1];
+        _stage1Card = buildPillCard(() ->
         {
             if (!_isAdClicked)
             {
@@ -228,10 +240,37 @@ public class AdPopup
                 _listener.onAdClicked();
             }
             launchPlayOverlay();
-        });
+        }, btn);
+        _stage1GetButton = btn[0];
+        // Pulse is scheduled from peek() — when the card is actually visible to the user
     }
 
-    private void addGetButton(LinearLayout parent, Runnable onClick)
+    private LinearLayout buildPillCard(Runnable onGetClick, TextView[] buttonOut)
+    {
+        LinearLayout card = new LinearLayout(_activity);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
+        card.setPadding(dpToPx(10), dpToPx(12), dpToPx(10), dpToPx(12));
+        card.setClipChildren(false);
+        card.setClipToPadding(false);
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.parseColor("#80000000"));
+        cardBg.setCornerRadius(dpToPx(100)); // pill shape
+        card.setBackground(cardBg);
+
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.END);
+        cardLp.rightMargin  = _cardRightInset  + dpToPx(24);
+        cardLp.bottomMargin = _cardBottomInset + dpToPx(24);
+        card.setLayoutParams(cardLp);
+
+        buttonOut[0] = addGetButton(card, onGetClick);
+        return card;
+    }
+
+    private TextView addGetButton(LinearLayout parent, Runnable onClick)
     {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor("#4CAF50"));
@@ -244,18 +283,30 @@ public class AdPopup
         getBtn.setTypeface(Typeface.DEFAULT_BOLD);
         getBtn.setGravity(Gravity.CENTER);
         getBtn.setBackground(bg);
-        getBtn.setPadding(dpToPx(12), 0, dpToPx(12), 0);
+
+        // 1. Reduce horizontal padding since we are using a fixed width now
+        getBtn.setPadding(0, 0, 0, 0);
+
+        // 2. Set a fixed Width (e.g., 100dp to 120dp) instead of WRAP_CONTENT
+        // This maintains the large "Pill" look even without the App Name text.
+        int buttonWidth = dpToPx(165);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                buttonWidth,
+                dpToPx(44)
+        );
+
         params.gravity = Gravity.CENTER_VERTICAL;
         getBtn.setLayoutParams(params);
+
         getBtn.setOnClickListener(v ->
         {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             onClick.run();
         });
+
         parent.addView(getBtn);
+        return getBtn;
     }
 
     // --- Stage 2: Play Store Native Sheet overlay
@@ -263,6 +314,14 @@ public class AdPopup
     private void launchPlayOverlay()
     {
         if (_state != State.PEEK && _state != State.COLLAPSED) return;
+
+        // Stop pulse animations and snap buttons back to rest scale
+        if (_stage1PulseRunnable != null) { _handler.removeCallbacks(_stage1PulseRunnable); _stage1PulseRunnable = null; }
+        if (_stage3PulseRunnable != null) { _handler.removeCallbacks(_stage3PulseRunnable); _stage3PulseRunnable = null; }
+        if (_stage1PulseAnimator != null) { _stage1PulseAnimator.cancel(); _stage1PulseAnimator = null; }
+        if (_stage3PulseAnimator != null) { _stage3PulseAnimator.cancel(); _stage3PulseAnimator = null; }
+        if (_stage1GetButton != null) { _stage1GetButton.setScaleX(1f); _stage1GetButton.setScaleY(1f); }
+        if (_stage3GetButton != null) { _stage3GetButton.setScaleX(1f); _stage3GetButton.setScaleY(1f); }
 
         if (_bundleId == null || _bundleId.isEmpty())
         {
@@ -273,9 +332,9 @@ public class AdPopup
         // Extract Adjust token from clickUrl and embed as referrer for attribution.
         // Google Play's Install Referrer API delivers it to the installed app on first launch.
         String token = extractAdjustToken(_config != null ? _config.clickUrl : null);
-        String encodedReferrer = (token != null) ? Uri.encode("adjust_tracker=" + token) : null;
+        String referrerValue = (token != null) ? "adjust_referrer%3D" + token : null;
         String deepLinkUrl = "https://play.google.com/d?id=" + _bundleId
-                + (encodedReferrer != null ? "&referrer=" + encodedReferrer : "");
+                + (referrerValue != null ? "&referrer=" + referrerValue : "");
         Log.d(TAG, "launchPlayOverlay: bundleId=" + _bundleId
                 + " token=" + token
                 + " deepLinkUrl=" + deepLinkUrl);
@@ -303,24 +362,53 @@ public class AdPopup
 
         if (intent.resolveActivity(_activity.getPackageManager()) != null)
         {
-            Log.d(TAG, "launchPlayOverlay: launching half-sheet via startActivityForResult");
+            Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — launching via startActivityForResult");
             _activity.startActivityForResult(intent, REQUEST_PLAY_OVERLAY);
         }
         else
         {
-            // Play Store v40.4+ not present — open store directly and skip to Stage 3
-            Log.w(TAG, "launchPlayOverlay: half-sheet not supported, falling back to StoreOpener");
-            StoreOpener.openStore(_activity, _bundleId, null);
+            // Play Store v40.4+ not present — resolve Adjust tracker via UAStoreLauncher
+            // so attribution is preserved through the full redirect chain.
+            Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — half-sheet unsupported, resolving via UAStoreLauncher");
             _state = State.COLLAPSED;
             _listener.onCollapsed();
             showStage3Card();
+
+            if (_config != null && _config.clickUrl != null && !_config.clickUrl.isEmpty())
+            {
+                Log.d(TAG, "launchPlayOverlay: fallback — UAStoreLauncher.openLink clickUrl=" + _config.clickUrl);
+                UAStoreLauncher.openLink(_activity, _config.clickUrl, new UAStoreLauncher.Callback()
+                {
+                    @Override
+                    public void onSuccess(String packageId)
+                    {
+                        Log.d(TAG, "launchPlayOverlay: fallback store opened — packageId=" + packageId);
+                    }
+
+                    @Override
+                    public void onFailed(String reason)
+                    {
+                        Log.e(TAG, "launchPlayOverlay: fallback UAStoreLauncher failed (" + reason + ")"
+                                + " — retrying with StoreOpener bundleId=" + _bundleId);
+                        if (!_isCancelled && !_activity.isFinishing())
+                            StoreOpener.openStore(_activity, _bundleId, referrerValue);
+                        else
+                            Log.w(TAG, "launchPlayOverlay: onFailed — skipping StoreOpener, activity finishing or cancelled");
+                    }
+                });
+            }
+            else
+            {
+                Log.w(TAG, "launchPlayOverlay: fallback — no clickUrl, using StoreOpener directly bundleId=" + _bundleId);
+                StoreOpener.openStore(_activity, _bundleId, referrerValue);
+            }
         }
     }
 
     // --- Stage 3 ---
 
     /**
-     * Same-size card as Stage 1, bottom-right corner: [app name flex] [GET button].
+     * Same-size card as Stage 1, bottom-right corner: [GET button].
      * Persists until the ad close button is tapped. GET re-opens the half-sheet.
      */
     private void showStage3Card()
@@ -331,54 +419,13 @@ public class AdPopup
             Log.d(TAG, "showStage3Card: skipped — already showing");
             return;
         }
-        Log.d(TAG, "showStage3Card: appName=\"" + _appName + "\" bundleId=" + _bundleId);
+        Log.d(TAG, "showStage3Card: bundleId=" + _bundleId);
 
-        int cardWidth = (int) (getScreenWidth() * 0.24f);
+        TextView[] btn = new TextView[1];
+        _stage3Card = buildPillCard(this::launchPlayOverlay, btn);
+        _stage3GetButton = btn[0];
+        // Pulse is scheduled from onPlayOverlayResult() each time the user returns from the store
 
-        LinearLayout card = new LinearLayout(_activity);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
-        card.setPadding(dpToPx(10), dpToPx(12), dpToPx(10), dpToPx(12));
-
-        GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(Color.parseColor("#80000000"));
-        cardBg.setCornerRadius(dpToPx(100)); // pill shape
-        card.setBackground(cardBg);
-
-        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                cardWidth, FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
-        cardLp.rightMargin  = dpToPx(24);
-        cardLp.bottomMargin = dpToPx(24);
-        card.setLayoutParams(cardLp);
-
-        // App name — fills space between card edge and GET button
-        TextView nameText = new TextView(_activity);
-        String displayName = (_appName != null && !_appName.isEmpty()) ? _appName
-                : (_bundleId != null ? _bundleId : "");
-        nameText.setText(displayName);
-        nameText.setTextColor(Color.WHITE);
-        nameText.setTextSize(13);
-        nameText.setTypeface(Typeface.DEFAULT_BOLD);
-        nameText.setMaxLines(1);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-        {
-            nameText.setAutoSizeTextTypeUniformWithConfiguration(7, 13, 1, TypedValue.COMPLEX_UNIT_SP);
-        }
-        else
-        {
-            nameText.setEllipsize(TextUtils.TruncateAt.END);
-        }
-        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(
-                dpToPx(48), LinearLayout.LayoutParams.WRAP_CONTENT);
-        nameLp.rightMargin = dpToPx(8);
-        nameText.setLayoutParams(nameLp);
-        card.addView(nameText);
-
-        // GET button — re-opens the half-sheet overlay
-        addGetButton(card, this::launchPlayOverlay);
-
-        _stage3Card = card;
         _rootLayout.addView(_stage3Card);
 
         // Slide in from below
@@ -394,6 +441,32 @@ public class AdPopup
                     .setInterpolator(new DecelerateInterpolator())
                     .start();
         });
+    }
+
+    /**
+     * Starts a continuous 1.0→1.1 scale pulse on the GET button.
+     * Returns the animator so it can be cancelled on pause/destroy.
+     */
+    private Animator startPulseAnimation(View target)
+    {
+        AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
+
+        ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1.0f, 1.05f);
+        scaleX.setRepeatMode(ObjectAnimator.REVERSE);
+        scaleX.setRepeatCount(ObjectAnimator.INFINITE);
+        scaleX.setDuration(600);
+        scaleX.setInterpolator(interp);
+
+        ObjectAnimator scaleY = ObjectAnimator.ofFloat(target, "scaleY", 1.0f, 1.05f);
+        scaleY.setRepeatMode(ObjectAnimator.REVERSE);
+        scaleY.setRepeatCount(ObjectAnimator.INFINITE);
+        scaleY.setDuration(600);
+        scaleY.setInterpolator(interp);
+
+        AnimatorSet set = new AnimatorSet();
+        set.playTogether(scaleX, scaleY);
+        set.start();
+        return set;
     }
 
     private void pulsateStage3Card()
@@ -415,6 +488,7 @@ public class AdPopup
     {
         Log.d(TAG, "state → PEEK");
         _state = State.PEEK;
+        _peekTimeMs = System.currentTimeMillis();
         _stage1Card.setTranslationY(dpToPx(200));
         _stage1Card.setVisibility(View.VISIBLE);
         _stage1Card.post(() ->
@@ -429,7 +503,25 @@ public class AdPopup
                     .setInterpolator(new DecelerateInterpolator())
                     .start();
         });
+        // Start pulse countdown from the moment the card is visible
+        _stage1PulseRunnable = () -> {
+            if (!_isCancelled && _stage1GetButton != null)
+                _stage1PulseAnimator = startPulseAnimation(_stage1GetButton);
+        };
+        _handler.postDelayed(_stage1PulseRunnable, 5000L);
         _listener.onPeeked();
+    }
+
+    private void scheduleStage3Pulse()
+    {
+        if (_stage3PulseRunnable != null) _handler.removeCallbacks(_stage3PulseRunnable);
+        if (_stage3PulseAnimator != null) { _stage3PulseAnimator.cancel(); _stage3PulseAnimator = null; }
+        if (_stage3GetButton != null) { _stage3GetButton.setScaleX(1f); _stage3GetButton.setScaleY(1f); }
+        _stage3PulseRunnable = () -> {
+            if (!_isCancelled && _stage3GetButton != null)
+                _stage3PulseAnimator = startPulseAnimation(_stage3GetButton);
+        };
+        _handler.postDelayed(_stage3PulseRunnable, 5000L);
     }
 
     // --- Attribution ---
@@ -453,18 +545,6 @@ public class AdPopup
     }
 
     // --- Helpers ---
-
-    private int getScreenWidth()
-    {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-        {
-            return _activity.getWindowManager().getCurrentWindowMetrics().getBounds().width();
-        }
-        DisplayMetrics metrics = new DisplayMetrics();
-        //noinspection deprecation
-        _activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
-        return metrics.widthPixels;
-    }
 
     private int dpToPx(float dp)
     {

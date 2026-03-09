@@ -92,12 +92,7 @@ public class AdUIManager
             window.setAttributes(lp);
         }
 
-        // FLAG_LAYOUT_NO_LIMITS bypasses MIUI/HyperOS safe-area enforcement at the WindowManager
-        // level, ensuring the window extends to physical screen edges past the display cutout.
-        window.addFlags(
-                WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS |
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        );
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(Color.TRANSPARENT);
 
@@ -340,9 +335,8 @@ public class AdUIManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
         {
-            // Re-apply edge-to-edge and MIUI bypass flags — HyperOS may reset these on resume.
+            // Re-apply edge-to-edge on resume — MIUI/HyperOS may reset this.
             activity.getWindow().setDecorFitsSystemWindows(false);
-            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
 
             WindowInsetsController controller = decorView.getWindowInsetsController();
             if (controller != null)
@@ -399,7 +393,7 @@ public class AdUIManager
 
     public void showCloseButton()
     {
-        if (skipButton != null) skipButton.setVisibility(View.GONE);
+        if (skipButton != null) skipButton.setVisibility(View.INVISIBLE);
         if (closeButton != null) closeButton.setVisibility(View.VISIBLE);
     }
 

@@ -331,12 +331,15 @@ public class AdPopup
 
         // Extract Adjust token from clickUrl and embed as referrer for attribution.
         // Google Play's Install Referrer API delivers it to the installed app on first launch.
-        String token = extractAdjustToken(_config != null ? _config.clickUrl : null);
-        String referrerValue = (token != null) ? "adjust_referrer%3D" + token : null;
-        String deepLinkUrl = "https://play.google.com/d?id=" + _bundleId
-                + (referrerValue != null ? "&referrer=" + referrerValue : "");
+        String tracker = extractAdjustToken(_config != null ? _config.clickUrl : null);
+        String source = "adjust_store";
+        String rawReferrer = "adjust_tracker=" + tracker + "&utm_source=" + source;
+        // Encode the entire referrer string for the URL
+        String encodedReferrer = Uri.encode(rawReferrer);
+
+        String deepLinkUrl = "https://play.google.com/d?id=" + _bundleId + "&referrer=" + encodedReferrer;
         Log.d(TAG, "launchPlayOverlay: bundleId=" + _bundleId
-                + " token=" + token
+                + " token=" + tracker
                 + " deepLinkUrl=" + deepLinkUrl);
 
         Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -391,7 +394,7 @@ public class AdPopup
                         Log.e(TAG, "launchPlayOverlay: fallback UAStoreLauncher failed (" + reason + ")"
                                 + " — retrying with StoreOpener bundleId=" + _bundleId);
                         if (!_isCancelled && !_activity.isFinishing())
-                            StoreOpener.openStore(_activity, _bundleId, referrerValue);
+                            StoreOpener.openStore(_activity, _bundleId, rawReferrer);
                         else
                             Log.w(TAG, "launchPlayOverlay: onFailed — skipping StoreOpener, activity finishing or cancelled");
                     }
@@ -400,7 +403,7 @@ public class AdPopup
             else
             {
                 Log.w(TAG, "launchPlayOverlay: fallback — no clickUrl, using StoreOpener directly bundleId=" + _bundleId);
-                StoreOpener.openStore(_activity, _bundleId, referrerValue);
+                StoreOpener.openStore(_activity, _bundleId, rawReferrer);
             }
         }
     }

@@ -149,7 +149,7 @@ public class AdUIManager
         muteButton.setPadding(0, 0, 0, 0);
         muteButton.setGravity(Gravity.CENTER);
 
-        muteButton.setBackground(createRoundedBackground(dpToPx(8)));
+        muteButton.setBackground(createCircleBackground());
         clearBackgroundTint(muteButton);
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(28), dpToPx(28), Gravity.TOP | Gravity.START);
@@ -199,14 +199,13 @@ public class AdUIManager
         skipButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         skipButton.setGravity(Gravity.CENTER);
         skipButton.setIncludeFontPadding(false);
-        skipButton.setBackground(createRoundedBackground(dpToPx(8)));
+        skipButton.setBackground(null); // icon only — no background or ripple
         skipButton.setPadding(0, 0, 0, 0);
         skipButton.setMinHeight(0);
         skipButton.setMinimumHeight(0);
         skipButton.setMinWidth(0);
         skipButton.setMinimumWidth(0);
-        // Rectangular — wider than tall to match iOS skip button shape
-        skipButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(56), dpToPx(28), Gravity.CENTER));
+        skipButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(28), dpToPx(28), Gravity.CENTER));
         skipButton.setVisibility(View.GONE);
         skipButton.setOnClickListener(v -> showCloseButton());
 
@@ -393,7 +392,10 @@ public class AdUIManager
 
     public void showCloseButton()
     {
-        if (skipButton != null) skipButton.setVisibility(View.INVISIBLE);
+        if (skipButton != null) {
+            skipButton.setPressed(false); // clear pressed/ripple state before hiding
+            skipButton.setVisibility(View.INVISIBLE);
+        }
         if (closeButton != null) closeButton.setVisibility(View.VISIBLE);
     }
 
@@ -428,6 +430,16 @@ public class AdUIManager
     }
 
     // --- Helpers ---
+
+    /** Circle background for the mute button — OVAL shape, same iOS-matching colour and border. */
+    private GradientDrawable createCircleBackground()
+    {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(Color.argb(191, 38, 38, 38));
+        bg.setStroke(dpToPx(0.75f), Color.argb(51, 255, 255, 255));
+        return bg;
+    }
 
     /**
      * Rounded-rectangle background matching iOS UAAdViewController button style:

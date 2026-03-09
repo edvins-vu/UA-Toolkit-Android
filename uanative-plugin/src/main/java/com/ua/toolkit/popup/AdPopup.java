@@ -95,7 +95,10 @@ public class AdPopup
 
         // Insert at index 1 (above video surface at 0, below UIManager controls)
         _rootLayout.addView(_stage1Card, 1);
-        _stage1Card.setTranslationY(dpToPx(200));
+        // Use rootLayout height as the initial off-screen position — guaranteed beyond the
+        // visible area on any device, avoiding a one-frame flash at an arbitrary 200dp offset.
+        _stage1Card.setTranslationY(_rootLayout.getHeight() > 0
+                ? _rootLayout.getHeight() : dpToPx(1000));
         _stage1Card.setVisibility(View.INVISIBLE);
     }
 
@@ -492,14 +495,16 @@ public class AdPopup
         Log.d(TAG, "state → PEEK");
         _state = State.PEEK;
         _peekTimeMs = System.currentTimeMillis();
-        _stage1Card.setTranslationY(dpToPx(200));
-        _stage1Card.setVisibility(View.VISIBLE);
+        // Card stays INVISIBLE until post() runs — prevents a one-frame flash at an arbitrary offset.
+        // setVisibility and the animation start are set atomically in the same frame inside post().
         _stage1Card.post(() ->
         {
-            float startY = _stage1Card.getHeight() > 0
-                    ? _stage1Card.getHeight() + dpToPx(24)
-                    : dpToPx(200);
+            // rootLayout.getHeight() is always beyond the visible bottom edge on any device.
+            float startY = _rootLayout.getHeight() > 0
+                    ? _rootLayout.getHeight()
+                    : dpToPx(1000);
             _stage1Card.setTranslationY(startY);
+            _stage1Card.setVisibility(View.VISIBLE);
             _stage1Card.animate()
                     .translationY(0f)
                     .setDuration(ANIM_DURATION_MS)

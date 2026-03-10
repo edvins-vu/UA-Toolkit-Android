@@ -88,10 +88,6 @@ public class AdPopup
     {
         _config = config;
         _bundleId = config.bundleId;
-        Log.d(TAG, "attach: bundleId=" + _bundleId
-                + " peekDelay=" + config.peekDelay
-                + " clickUrl=" + config.clickUrl);
-
         _rootLayout.setClipChildren(false);
         buildStage1Card(config);
 
@@ -106,11 +102,9 @@ public class AdPopup
 
     public void schedulePeek(int delaySeconds)
     {
-        Log.d(TAG, "schedulePeek: will peek in " + delaySeconds + "s");
         _scheduledPeekRunnable = () ->
         {
             if (!_isCancelled && _state == State.HIDDEN) peek();
-            else Log.d(TAG, "schedulePeek: skipped (cancelled=" + _isCancelled + " state=" + _state + ")");
         };
         _handler.postDelayed(_scheduledPeekRunnable, delaySeconds * 1000L);
     }
@@ -130,7 +124,6 @@ public class AdPopup
     /** Called by AdActivity when the user taps the video surface. */
     public void handleVideoTap()
     {
-        Log.d(TAG, "handleVideoTap: state=" + _state + " isCancelled=" + _isCancelled);
         if (_isCancelled) return;
         switch (_state)
         {
@@ -147,10 +140,7 @@ public class AdPopup
                 // Guard: if the card is still animating in, ignore the tap so the user
                 // actually sees the popup before the store opens.
                 if (System.currentTimeMillis() - _peekTimeMs < ANIM_DURATION_MS)
-                {
-                    Log.d(TAG, "handleVideoTap: PEEK — tap within slide-in window, ignoring");
                     break;
-                }
                 // Video tap while Stage 1 visible → same outcome as GET button
                 if (!_isAdClicked)
                 {
@@ -160,7 +150,6 @@ public class AdPopup
                 launchPlayOverlay();
                 break;
             case PLAY_OVERLAY:
-                Log.d(TAG, "handleVideoTap: ignored — half-sheet is open");
                 break;
             case COLLAPSED:
                 // Stage 3 is showing — draw attention to it
@@ -348,9 +337,7 @@ public class AdPopup
         String encodedReferrer = Uri.encode(rawReferrer);
 
         String deepLinkUrl = "https://play.google.com/d?id=" + _bundleId + "&referrer=" + encodedReferrer;
-        Log.d(TAG, "launchPlayOverlay: bundleId=" + _bundleId
-                + " token=" + tracker
-                + " deepLinkUrl=" + deepLinkUrl);
+        Log.d(TAG, "launchPlayOverlay: opening store for bundleId=" + _bundleId);
 
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setData(Uri.parse(deepLinkUrl));
@@ -358,7 +345,6 @@ public class AdPopup
         intent.putExtra("overlay", true);
         intent.putExtra("callerId", _activity.getPackageName());
 
-        Log.d(TAG, "state → PLAY_OVERLAY");
         _state = State.PLAY_OVERLAY;
         _listener.onExpanded();
 
@@ -415,7 +401,6 @@ public class AdPopup
             {
                 // First tap — fire click event AND open store via URL resolution
                 _clickUrlFired = true;
-                Log.d(TAG, "launchPlayOverlay: fallback — UAStoreLauncher.openLink clickUrl=" + _config.clickUrl);
                 UAStoreLauncher.openLink(_activity, _config.clickUrl, new UAStoreLauncher.Callback()
                 {
                     @Override
@@ -459,8 +444,6 @@ public class AdPopup
             Log.d(TAG, "showStage3Card: skipped — already showing");
             return;
         }
-        Log.d(TAG, "showStage3Card: bundleId=" + _bundleId);
-
         TextView[] btn = new TextView[1];
         _stage3Card = buildPillCard(this::launchPlayOverlay, btn);
         _stage3GetButton = btn[0];
@@ -511,7 +494,6 @@ public class AdPopup
 
     private void pulsateStage3Card()
     {
-        Log.d(TAG, "pulsateStage3Card: stage3Present=" + (_stage3Card != null));
         if (_stage3Card == null) return;
         ObjectAnimator scaleX = ObjectAnimator.ofFloat(_stage3Card, "scaleX", 1f, 1.04f, 1f);
         ObjectAnimator scaleY = ObjectAnimator.ofFloat(_stage3Card, "scaleY", 1f, 1.04f, 1f);

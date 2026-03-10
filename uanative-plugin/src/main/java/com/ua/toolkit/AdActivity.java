@@ -58,18 +58,10 @@ public class AdActivity extends Activity implements
     {
         super.onCreate(savedInstanceState);
         currentInstanceRef = new WeakReference<>(this);
-        Log.d(TAG, "onCreate");
 
         lockOrientationToCurrentRotation();
         setupWindowFlags();
         parseIntentConfig();
-        Log.d(TAG, "config: videoPath=" + config.videoPath
-                + " bundleId=" + config.bundleId
-                + " clickUrl=" + config.clickUrl
-                + " isRewarded=" + config.isRewarded
-                + " closeButtonDelay=" + config.closeButtonDelay
-                + " peekDelay=" + config.peekDelay);
-
         if (!config.isValid())
         {
             String errorMsg = "Invalid config - video file is missing, empty, or path is null"
@@ -128,7 +120,6 @@ public class AdActivity extends Activity implements
         // Game is landscape-only — allow sensor-driven switching between LANDSCAPE and REVERSE_LANDSCAPE
         // so the ad follows 180° device flips without ever snapping to portrait.
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        Log.d(TAG, "Orientation locked to SENSOR_LANDSCAPE");
     }
 
     private void setupWindowFlags() {
@@ -168,7 +159,6 @@ public class AdActivity extends Activity implements
             @Override
             public void onAudioFocusPause()
             {
-                Log.d(TAG, "onAudioFocusPause — pausing video and timer");
                 if (videoPlayer != null && timerManager != null)
                 {
                     pausedByAudioFocus = true;
@@ -179,7 +169,6 @@ public class AdActivity extends Activity implements
             @Override
             public void onAudioFocusResume()
             {
-                Log.d(TAG, "onAudioFocusResume — pausedByAudioFocus=" + pausedByAudioFocus);
                 if (pausedByAudioFocus && !isFinishing() && videoPlayer != null && timerManager != null
                         && (popup == null || !popup.isExpanded()))
                 {
@@ -196,9 +185,7 @@ public class AdActivity extends Activity implements
         popup = new AdPopup(this, uiManager.getRootLayout(), new AdPopup.Listener()
         {
             @Override
-            public void onPeeked() {
-                Log.d(TAG, "popup.onPeeked — Stage 1 visible");
-            }
+            public void onPeeked() { }
 
             @Override
             public void onDismissed()
@@ -249,17 +236,12 @@ public class AdActivity extends Activity implements
     }
 
     private void notifyAdStarted() {
-        if (adStartedFired) {
-            Log.d(TAG, "notifyAdStarted — already fired, skipping duplicate");
-            return;
-        }
+        if (adStartedFired) return;
         adStartedFired = true;
-        Log.d(TAG, "notifyAdStarted — firing onAdStarted callback");
         if (callback != null) callback.onAdStarted();
     }
 
     private void startAd() {
-        Log.d(TAG, "startAd — loading video: " + config.videoPath);
         videoPlayer.load(config.videoPath, true);
         prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
     }
@@ -288,7 +270,6 @@ public class AdActivity extends Activity implements
     @Override public void onMuteClicked() {
         audioManager.toggleMute();
         uiManager.updateMuteButton(audioManager.isMuted());
-        Log.d(TAG, "onMuteClicked — isMuted=" + audioManager.isMuted());
     }
     @Override public void onVideoPrepared(MediaPlayer mp) {
         boolean firstPrepare = !adStartedFired;
@@ -339,7 +320,6 @@ public class AdActivity extends Activity implements
 
     private void handleBackNavigation() {
         boolean closeVisible = uiManager != null && uiManager.isCloseButtonVisible();
-        Log.d(TAG, "handleBackNavigation — closeButtonVisible=" + closeVisible);
         if (popup != null && popup.handleBackPress()) {
             return;
         }

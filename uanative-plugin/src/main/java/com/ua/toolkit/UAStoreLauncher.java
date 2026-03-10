@@ -138,8 +138,6 @@ public class UAStoreLauncher
             return;
         }
 
-        Log.d(TAG, "fireClickUrl: firing Adjust click event for " + clickUrl);
-
         if (currentResolver != null)
         {
             currentResolver.cancel();

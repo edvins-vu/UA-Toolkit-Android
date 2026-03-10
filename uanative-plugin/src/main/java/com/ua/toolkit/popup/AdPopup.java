@@ -66,6 +66,8 @@ public class AdPopup
     private Animator _stage3PulseAnimator;
     private Runnable _stage1PulseRunnable;
     private Runnable _stage3PulseRunnable;
+    private Runnable _scheduledPeekRunnable;
+    private boolean _clickUrlFired = false; // ensures Adjust click fires only once per ad session
 
     // Insets — set once via applyInsets() when AdUIManager receives its first inset dispatch
     private int _cardBottomInset = 0;
@@ -105,11 +107,12 @@ public class AdPopup
     public void schedulePeek(int delaySeconds)
     {
         Log.d(TAG, "schedulePeek: will peek in " + delaySeconds + "s");
-        _handler.postDelayed(() ->
+        _scheduledPeekRunnable = () ->
         {
             if (!_isCancelled && _state == State.HIDDEN) peek();
             else Log.d(TAG, "schedulePeek: skipped (cancelled=" + _isCancelled + " state=" + _state + ")");
-        }, delaySeconds * 1000L);
+        };
+        _handler.postDelayed(_scheduledPeekRunnable, delaySeconds * 1000L);
     }
 
     /** Returns true while the Play Store half-sheet overlay is active (video should stay paused). */
@@ -132,8 +135,12 @@ public class AdPopup
         switch (_state)
         {
             case HIDDEN:
-                // Cancel scheduled auto-peek and show Stage 1 immediately
-                _handler.removeCallbacksAndMessages(null);
+                // Cancel only the scheduled auto-peek — leave other handler messages intact
+                if (_scheduledPeekRunnable != null)
+                {
+                    _handler.removeCallbacks(_scheduledPeekRunnable);
+                    _scheduledPeekRunnable = null;
+                }
                 peek();
                 break;
             case PEEK:
@@ -369,6 +376,22 @@ public class AdPopup
         if (intent.resolveActivity(_activity.getPackageManager()) != null)
         {
             Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — launching via startActivityForResult");
+            if (!_clickUrlFired)
+            {
+                if (_config != null && _config.clickUrl != null && !_config.clickUrl.isEmpty())
+                {
+                    _clickUrlFired = true;
+                    UAStoreLauncher.fireClickUrl(_activity, _config.clickUrl);
+                }
+                else
+                {
+                    Log.e(TAG, "launchPlayOverlay: PATH=half-sheet — clickUrl is null, click not tracked");
+                }
+            }
+            else
+            {
+                Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — click already tracked for this session");
+            }
             _activity.startActivityForResult(intent, REQUEST_PLAY_OVERLAY);
         }
         else
@@ -380,8 +403,18 @@ public class AdPopup
             _listener.onCollapsed();
             showStage3Card();
 
-            if (_config != null && _config.clickUrl != null && !_config.clickUrl.isEmpty())
+            if (_config == null || _config.clickUrl == null || _config.clickUrl.isEmpty())
             {
+                // No clickUrl is a hard config error in the fallback path — without it we
+                // cannot track the click or reliably resolve the store URL.
+                Log.e(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, cannot open store or track click");
+                return;
+            }
+
+            if (!_clickUrlFired)
+            {
+                // First tap — fire click event AND open store via URL resolution
+                _clickUrlFired = true;
                 Log.d(TAG, "launchPlayOverlay: fallback — UAStoreLauncher.openLink clickUrl=" + _config.clickUrl);
                 UAStoreLauncher.openLink(_activity, _config.clickUrl, new UAStoreLauncher.Callback()
                 {
@@ -405,7 +438,8 @@ public class AdPopup
             }
             else
             {
-                Log.w(TAG, "launchPlayOverlay: fallback — no clickUrl, using StoreOpener directly bundleId=" + _bundleId);
+                // Click already tracked this session — open store directly without re-firing
+                Log.d(TAG, "launchPlayOverlay: fallback — click already tracked, opening store directly bundleId=" + _bundleId);
                 StoreOpener.openStore(_activity, _bundleId, rawReferrer);
             }
         }
@@ -495,22 +529,22 @@ public class AdPopup
         Log.d(TAG, "state → PEEK");
         _state = State.PEEK;
         _peekTimeMs = System.currentTimeMillis();
-        // Card stays INVISIBLE until post() runs — prevents a one-frame flash at an arbitrary offset.
-        // setVisibility and the animation start are set atomically in the same frame inside post().
-        _stage1Card.post(() ->
-        {
-            // rootLayout.getHeight() is always beyond the visible bottom edge on any device.
-            float startY = _rootLayout.getHeight() > 0
-                    ? _rootLayout.getHeight()
-                    : dpToPx(1000);
-            _stage1Card.setTranslationY(startY);
-            _stage1Card.setVisibility(View.VISIBLE);
-            _stage1Card.animate()
-                    .translationY(0f)
-                    .setDuration(ANIM_DURATION_MS)
-                    .setInterpolator(new DecelerateInterpolator())
-                    .start();
-        });
+        // Start the card just one card-height below the screen edge so it enters the visible
+        // area immediately and slides upward for its full height — making the appearance
+        // unmissable. Using rootLayout.getHeight() as startY caused the card to be visible
+        // for only ~110ms at the very end of the 280ms animation, which users couldn't perceive.
+        // No flash risk: setTranslationY is called before setVisibility(VISIBLE).
+        float cardH = _stage1Card.getMeasuredHeight() > 0
+                ? _stage1Card.getMeasuredHeight()
+                : dpToPx(60); // safe fallback if not yet measured
+        float startY = cardH + dpToPx(24);
+        _stage1Card.setTranslationY(startY);
+        _stage1Card.setVisibility(View.VISIBLE);
+        _stage1Card.animate()
+                .translationY(0f)
+                .setDuration(ANIM_DURATION_MS)
+                .setInterpolator(new DecelerateInterpolator())
+                .start();
         // Start pulse countdown from the moment the card is visible
         _stage1PulseRunnable = () -> {
             if (!_isCancelled && _stage1GetButton != null)
@@ -535,7 +569,7 @@ public class AdPopup
     // --- Attribution ---
 
     /**
-     * Extracts the Adjust tracker token from a URL like https://app.adjust.com/1w3tf31m.
+     * Extracts the Adjust tracker token from a URL
      * Returns the last non-empty path segment, or null if not found.
      */
     private static String extractAdjustToken(String clickUrl)

@@ -123,6 +123,50 @@ public class UAStoreLauncher
         }
     }
 
+    /**
+     * Fires the Adjust click URL in a hidden WebView without opening the store.
+     * Used in PATH 1 (half-sheet) where the store opens via startActivityForResult
+     * and only the click event needs to be recorded with Adjust's servers.
+     * The resolver follows the redirect chain but the onStoreFound callback
+     * deliberately does NOT call StoreOpener — the half-sheet handles that.
+     */
+    public static void fireClickUrl(Context context, String clickUrl)
+    {
+        if (context == null || clickUrl == null || clickUrl.isEmpty())
+        {
+            Log.w(TAG, "fireClickUrl: skipped — context or clickUrl is null/empty");
+            return;
+        }
+
+        Log.d(TAG, "fireClickUrl: firing Adjust click event for " + clickUrl);
+
+        if (currentResolver != null)
+        {
+            currentResolver.cancel();
+            currentResolver = null;
+        }
+
+        currentResolver = new HeadlessWebViewResolver(context);
+        currentResolver.setTimeout(DEFAULT_TIMEOUT_MS);
+        currentResolver.resolve(clickUrl, new HeadlessWebViewResolver.ResolverCallback()
+        {
+            @Override
+            public void onStoreFound(HeadlessWebViewResolver.StoreInfo storeInfo)
+            {
+                // Click event fired successfully — store opens via half-sheet, not here
+                Log.d(TAG, "fireClickUrl: click tracked for packageId=" + storeInfo.packageId);
+                currentResolver = null;
+            }
+
+            @Override
+            public void onFailed(String reason)
+            {
+                Log.w(TAG, "fireClickUrl: click tracking failed — " + reason);
+                currentResolver = null;
+            }
+        });
+    }
+
     public static void cancel()
     {
         if (currentResolver != null)

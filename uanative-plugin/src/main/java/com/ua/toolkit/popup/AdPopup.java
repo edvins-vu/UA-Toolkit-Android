@@ -391,9 +391,10 @@ public class AdPopup
 
             if (_config == null || _config.clickUrl == null || _config.clickUrl.isEmpty())
             {
-                // No clickUrl is a hard config error in the fallback path — without it we
-                // cannot track the click or reliably resolve the store URL.
-                Log.e(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, cannot open store or track click");
+                // No clickUrl means attribution is lost but the store can still open via bundleId.
+                Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, skipping attribution, opening store via bundleId");
+                if (!_isCancelled && !_activity.isFinishing())
+                    StoreOpener.openStore(_activity, _bundleId, rawReferrer);
                 return;
             }
 

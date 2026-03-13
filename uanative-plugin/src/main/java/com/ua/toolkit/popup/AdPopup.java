@@ -254,13 +254,14 @@ public class AdPopup
         card.setClipToPadding(false);
 
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(Color.parseColor("#80000000"));
-        cardBg.setCornerRadius(dpToPx(100)); // pill shape
+        try { cardBg.setColor(Color.parseColor(_config != null ? _config.cardBackgroundColor : "#80000000")); }
+        catch (IllegalArgumentException e) { cardBg.setColor(Color.parseColor("#80000000")); }
+        cardBg.setCornerRadius(dpToPx(_config != null ? _config.cardCornerRadiusDp : 100));
         card.setBackground(cardBg);
 
+        int gravity = resolveCardGravity(_config != null ? _config.cardPosition : "bottom_end");
         FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, gravity);
         cardLp.rightMargin  = _cardRightInset  + dpToPx(24);
         cardLp.bottomMargin = _cardBottomInset + dpToPx(24);
         card.setLayoutParams(cardLp);
@@ -269,30 +270,39 @@ public class AdPopup
         return card;
     }
 
+    private int resolveCardGravity(String position)
+    {
+        if (position == null) return Gravity.BOTTOM | Gravity.END;
+        switch (position)
+        {
+            case "bottom_start":  return Gravity.BOTTOM | Gravity.START;
+            case "bottom_center": return Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+            default:              return Gravity.BOTTOM | Gravity.END;
+        }
+    }
+
     private TextView addGetButton(LinearLayout parent, Runnable onClick)
     {
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor("#4CAF50"));
-        bg.setCornerRadius(dpToPx(100)); // pill shape
+        try { bg.setColor(Color.parseColor(_config != null ? _config.getButtonColor : "#4CAF50")); }
+        catch (IllegalArgumentException e) { bg.setColor(Color.parseColor("#4CAF50")); }
+        bg.setCornerRadius(dpToPx(_config != null ? _config.getButtonCornerRadiusDp : 100));
 
         TextView getBtn = new TextView(_activity);
         getBtn.setText(_config != null ? _config.getButtonText : "GET");
         getBtn.setTextColor(Color.WHITE);
-        getBtn.setTextSize(14);
+        getBtn.setTextSize(_config != null && _config.getButtonTextSizeSp > 0 ? _config.getButtonTextSizeSp : 14);
         getBtn.setTypeface(Typeface.DEFAULT_BOLD);
         getBtn.setGravity(Gravity.CENTER);
         getBtn.setBackground(bg);
-
-        // 1. Reduce horizontal padding since we are using a fixed width now
         getBtn.setPadding(0, 0, 0, 0);
 
-        // 2. Set a fixed Width (e.g., 100dp to 120dp) instead of WRAP_CONTENT
-        // This maintains the large "Pill" look even without the App Name text.
-        int buttonWidth = dpToPx(165);
+        int buttonWidth  = dpToPx(_config != null && _config.getButtonWidthDp  > 0 ? _config.getButtonWidthDp  : 165);
+        int buttonHeight = dpToPx(_config != null && _config.getButtonHeightDp > 0 ? _config.getButtonHeightDp : 44);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 buttonWidth,
-                dpToPx(44)
+                buttonHeight
         );
 
         params.gravity = Gravity.CENTER_VERTICAL;
@@ -529,11 +539,14 @@ public class AdPopup
                 .setInterpolator(new DecelerateInterpolator())
                 .start();
         // Start pulse countdown from the moment the card is visible
-        _stage1PulseRunnable = () -> {
-            if (!_isCancelled && _stage1GetButton != null)
-                _stage1PulseAnimator = startPulseAnimation(_stage1GetButton);
-        };
-        _handler.postDelayed(_stage1PulseRunnable, 5000L);
+        if (_config != null && _config.pulseEnabled) {
+            long pulseDelayMs = (_config.pulseStartDelaySec > 0 ? _config.pulseStartDelaySec : 5) * 1000L;
+            _stage1PulseRunnable = () -> {
+                if (!_isCancelled && _stage1GetButton != null)
+                    _stage1PulseAnimator = startPulseAnimation(_stage1GetButton);
+            };
+            _handler.postDelayed(_stage1PulseRunnable, pulseDelayMs);
+        }
         _listener.onPeeked();
     }
 
@@ -542,11 +555,13 @@ public class AdPopup
         if (_stage3PulseRunnable != null) _handler.removeCallbacks(_stage3PulseRunnable);
         if (_stage3PulseAnimator != null) { _stage3PulseAnimator.cancel(); _stage3PulseAnimator = null; }
         if (_stage3GetButton != null) { _stage3GetButton.setScaleX(1f); _stage3GetButton.setScaleY(1f); }
+        if (_config == null || !_config.pulseEnabled) return;
+        long pulseDelayMs = (_config.pulseStartDelaySec > 0 ? _config.pulseStartDelaySec : 5) * 1000L;
         _stage3PulseRunnable = () -> {
             if (!_isCancelled && _stage3GetButton != null)
                 _stage3PulseAnimator = startPulseAnimation(_stage3GetButton);
         };
-        _handler.postDelayed(_stage3PulseRunnable, 5000L);
+        _handler.postDelayed(_stage3PulseRunnable, pulseDelayMs);
     }
 
     // --- Attribution ---

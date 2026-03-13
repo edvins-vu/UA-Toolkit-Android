@@ -38,8 +38,9 @@ public class AdUIManager
     private final Activity activity;
     private final Listener listener;
     private final boolean isRewarded;
-    private String rewardCountdownText = "Reward in: %ds";
-    private String rewardEarnedText    = "Reward earned!";
+    private String  rewardCountdownText  = "Reward in: %ds";
+    private String  rewardEarnedText     = "Reward earned!";
+    private boolean showRewardCountdown  = true;
 
     // Views
     private FrameLayout rootLayout;
@@ -58,6 +59,13 @@ public class AdUIManager
     private boolean insetsApplied = false; // guard: only apply once — overlays cause transient re-dispatches
     private InsetsReadyCallback insetsReadyCallback;
 
+    private boolean      showMuteButton     = true;
+    private boolean      showSkipButton     = true;
+    private boolean      showProgressBar    = true;
+    private String       progressBarColor   = "#FFFFFF";
+    private int          progressBarHeightDp = 3;
+    private AdProgressBar _progressBar      = null;
+
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
     {
@@ -68,6 +76,16 @@ public class AdUIManager
             this.rewardCountdownText = rewardCountdownText;
         if (rewardEarnedText != null && !rewardEarnedText.isEmpty())
             this.rewardEarnedText = rewardEarnedText;
+    }
+
+    public void setShowMuteButton(boolean show)        { this.showMuteButton = show; }
+    public void setShowSkipButton(boolean show)        { this.showSkipButton = show; }
+    public void setShowRewardCountdown(boolean show)   { this.showRewardCountdown = show; }
+    public void setProgressBarConfig(boolean show, String color, int heightDp)
+    {
+        this.showProgressBar     = show;
+        this.progressBarColor    = color;
+        this.progressBarHeightDp = heightDp;
     }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
@@ -109,6 +127,11 @@ public class AdUIManager
         rootLayout.addView(timerText);
         rootLayout.addView(muteButton);
         rootLayout.addView(buttonContainer);
+
+        if (showProgressBar)
+        {
+            _progressBar = new AdProgressBar(activity, rootLayout, progressBarColor, progressBarHeightDp);
+        }
 
         activity.setContentView(rootLayout);
     }
@@ -156,6 +179,7 @@ public class AdUIManager
         params.topMargin = dpToPx(8);
         params.leftMargin = dpToPx(20);
         muteButton.setLayoutParams(params);
+        muteButton.setVisibility(showMuteButton ? View.VISIBLE : View.GONE);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
     }
 
@@ -171,7 +195,7 @@ public class AdUIManager
         timerText.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
-        timerText.setVisibility(isRewarded ? View.VISIBLE : View.GONE);
+        timerText.setVisibility(isRewarded && showRewardCountdown ? View.VISIBLE : View.GONE);
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -381,11 +405,13 @@ public class AdUIManager
         if (timerText != null)
         {
             timerText.setText(rewardEarnedText);
+            timerText.setVisibility(View.VISIBLE); // always show earned text even if countdown was hidden
         }
     }
 
     public void showSkipButton()
     {
+        if (!showSkipButton) return;
         if (skipButton == null || skipButton.getVisibility() == View.VISIBLE) return;
         skipButton.setVisibility(View.VISIBLE);
     }
@@ -415,6 +441,24 @@ public class AdUIManager
     public boolean isCloseButtonVisible()
     {
         return closeButton != null && closeButton.getVisibility() == View.VISIBLE;
+    }
+
+    /** Update progress bar fill fraction (0..1). Call every ~100ms from timer tick. */
+    public void updateProgress(float fraction)
+    {
+        if (_progressBar != null) _progressBar.setProgress(fraction);
+    }
+
+    /** Snap fill to full and fade out. Call when close button is earned. */
+    public void completeProgress()
+    {
+        if (_progressBar != null) _progressBar.completeAndFade();
+    }
+
+    /** Remove progress bar immediately (used on destroy/cancel). */
+    public void cancelProgress()
+    {
+        if (_progressBar != null) { _progressBar.cancel(); _progressBar = null; }
     }
 
     // --- Getters ---

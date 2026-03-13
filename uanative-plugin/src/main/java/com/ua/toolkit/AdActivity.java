@@ -136,12 +136,17 @@ public class AdActivity extends Activity implements
 
     private void parseIntentConfig() {
         config = new AdConfig(
+                // Core
                 getIntent().getStringExtra("VIDEO_PATH"),
                 getIntent().getStringExtra("CLICK_URL"),
                 getIntent().getBooleanExtra("IS_REWARDED", false),
+
+                // Timing
                 getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
                 getIntent().getIntExtra("POPUP_PEEK_DELAY", 5),
                 getIntent().getStringExtra("BUNDLE_ID"),
+
+                // GET button
                 getIntent().getStringExtra("GET_BUTTON_TEXT"),
                 getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
                 getIntent().getStringExtra("REWARD_EARNED_TEXT"),
@@ -150,18 +155,26 @@ public class AdActivity extends Activity implements
                 getIntent().getIntExtra("GET_BUTTON_HEIGHT_DP", 0),
                 getIntent().getIntExtra("GET_BUTTON_TEXT_SIZE_SP", 0),
                 getIntent().getIntExtra("GET_BUTTON_CORNER_DP", 0),
+
+                // Popup card
                 getIntent().getStringExtra("CARD_BG_COLOR"),
                 getIntent().getIntExtra("CARD_CORNER_DP", 0),
                 getIntent().getStringExtra("CARD_POSITION"),
+
+                // Controls
                 getIntent().getBooleanExtra("SHOW_MUTE_BUTTON", true),
                 getIntent().getBooleanExtra("SHOW_SKIP_BUTTON", true),
                 getIntent().getIntExtra("SKIP_BUTTON_DELAY", 0),
                 getIntent().getBooleanExtra("PULSE_ENABLED", true),
                 getIntent().getIntExtra("PULSE_START_DELAY", 0),
                 getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true),
+
+                // Progress bar
                 getIntent().getBooleanExtra("SHOW_PROGRESS_BAR", true),
                 getIntent().getStringExtra("PROGRESS_BAR_COLOR"),
                 getIntent().getIntExtra("PROGRESS_BAR_HEIGHT_DP", 0),
+
+                // Video
                 getIntent().getBooleanExtra("VIDEO_LOOP", true)
         );
     }

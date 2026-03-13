@@ -51,12 +51,17 @@ public class AdConfig
     public final boolean videoLoop;
 
     public AdConfig(
+            // Core
             String  videoPath,
             String  clickUrl,
             boolean isRewarded,
+
+            // Timing
             int     closeButtonDelay,
             int     peekDelay,
             String  bundleId,
+
+            // GET button
             String  getButtonText,
             String  rewardCountdownText,
             String  rewardEarnedText,
@@ -65,18 +70,26 @@ public class AdConfig
             int     getButtonHeightDp,
             int     getButtonTextSizeSp,
             int     getButtonCornerRadiusDp,
+
+            // Popup card
             String  cardBackgroundColor,
             int     cardCornerRadiusDp,
             String  cardPosition,
+
+            // Controls
             boolean showMuteButton,
             boolean showSkipButton,
             int     skipButtonDelaySec,
             boolean pulseEnabled,
             int     pulseStartDelaySec,
             boolean showRewardCountdown,
+
+            // Progress bar
             boolean showProgressBar,
             String  progressBarColor,
             int     progressBarHeightDp,
+
+            // Video
             boolean videoLoop
     )
     {

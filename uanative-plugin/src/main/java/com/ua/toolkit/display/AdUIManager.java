@@ -61,10 +61,6 @@ public class AdUIManager
 
     private boolean      showMuteButton     = true;
     private boolean      showSkipButton     = true;
-    private boolean      showProgressBar    = true;
-    private String       progressBarColor   = "#FFFFFF";
-    private int          progressBarHeightDp = 3;
-    private AdProgressBar _progressBar      = null;
 
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
@@ -81,12 +77,6 @@ public class AdUIManager
     public void setShowMuteButton(boolean show)        { this.showMuteButton = show; }
     public void setShowSkipButton(boolean show)        { this.showSkipButton = show; }
     public void setShowRewardCountdown(boolean show)   { this.showRewardCountdown = show; }
-    public void setProgressBarConfig(boolean show, String color, int heightDp)
-    {
-        this.showProgressBar     = show;
-        this.progressBarColor    = color;
-        this.progressBarHeightDp = heightDp;
-    }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
     {
@@ -127,11 +117,6 @@ public class AdUIManager
         rootLayout.addView(timerText);
         rootLayout.addView(muteButton);
         rootLayout.addView(buttonContainer);
-
-        if (showProgressBar)
-        {
-            _progressBar = new AdProgressBar(activity, rootLayout, progressBarColor, progressBarHeightDp);
-        }
 
         activity.setContentView(rootLayout);
     }
@@ -441,24 +426,6 @@ public class AdUIManager
     public boolean isCloseButtonVisible()
     {
         return closeButton != null && closeButton.getVisibility() == View.VISIBLE;
-    }
-
-    /** Update progress bar fill fraction (0..1). Call every ~100ms from timer tick. */
-    public void updateProgress(float fraction)
-    {
-        if (_progressBar != null) _progressBar.setProgress(fraction);
-    }
-
-    /** Snap fill to full and fade out. Call when close button is earned. */
-    public void completeProgress()
-    {
-        if (_progressBar != null) _progressBar.completeAndFade();
-    }
-
-    /** Remove progress bar immediately (used on destroy/cancel). */
-    public void cancelProgress()
-    {
-        if (_progressBar != null) { _progressBar.cancel(); _progressBar = null; }
     }
 
     // --- Getters ---

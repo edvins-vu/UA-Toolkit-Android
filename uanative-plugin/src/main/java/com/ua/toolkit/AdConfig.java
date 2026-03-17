@@ -42,11 +42,6 @@ public class AdConfig
     // Reward
     public final boolean showRewardCountdown;
 
-    // Progress bar
-    public final boolean showProgressBar;
-    public final String  progressBarColor;
-    public final int     progressBarHeightDp;
-
     // Video
     public final boolean videoLoop;
 
@@ -83,11 +78,6 @@ public class AdConfig
             boolean pulseEnabled,
             int     pulseStartDelaySec,
             boolean showRewardCountdown,
-
-            // Progress bar
-            boolean showProgressBar,
-            String  progressBarColor,
-            int     progressBarHeightDp,
 
             // Video
             boolean videoLoop
@@ -128,11 +118,6 @@ public class AdConfig
 
         // Reward
         this.showRewardCountdown = showRewardCountdown;
-
-        // Progress bar
-        this.showProgressBar     = showProgressBar;
-        this.progressBarColor    = nonEmpty(progressBarColor, "#FFFFFF");
-        this.progressBarHeightDp = progressBarHeightDp > 0 ? progressBarHeightDp : 3;
 
         // Video
         this.videoLoop = videoLoop;

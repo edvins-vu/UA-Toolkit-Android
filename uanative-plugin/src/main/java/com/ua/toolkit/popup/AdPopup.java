@@ -1,3 +1,62 @@
+//In Adjust, when a marketer creates a single link to cover multiple apps (like an Android version and an iOS version of I Am Cat), Adjust combines the individual 6–8 character tokens into a single string separated by an underscore.
+//
+//Why your current code fails on these URLs
+//Your current extractAdjustToken method uses getLastPathSegment(). Here is what happens with your specific example:
+//
+//Input: https://app.adjust.com/1yc2qlqa_1yp95tzp?campaign=...
+//
+//getLastPathSegment() returns: "1yc2qlqa_1yp95tzp"
+//
+//The Result: You are passing a 17-character string as the adjust_tracker in your intent.
+//
+//Google Play and Adjust will both reject this. * Google Play expects a single, valid token.
+//
+//Adjust’s Referrer API specifically looks for the individual 6–8 character token assigned to the Android app. If it sees the combined string with an underscore, it won't be able to map the install to the correct tracker, and the user will likely be marked as "Organic."
+//
+//The 2026 Solution: Smart Token Extraction
+//To fix this, you need to detect if there is an underscore and, if so, extract the correct part. Usually, the order in a combined link corresponds to the order the apps were added (e.g., AndroidToken_iOSToken).
+//
+//However, the safest way is to let the Adjust SDK handle the resolution, or use a more surgical extraction method:
+//
+//Java
+//private static String extractAdjustToken(String clickUrl) {
+//    if (clickUrl == null || clickUrl.isEmpty()) return null;
+//    try {
+//        String path = Uri.parse(clickUrl).getLastPathSegment();
+//        if (path == null) return null;
+//
+//        // Handle Combined Links (e.g., "1yc2qlqa_1yp95tzp")
+//        if (path.contains("_")) {
+//            String[] tokens = path.split("_");
+//            for (String token : tokens) {
+//                // Adjust tokens are 6-8 alphanumeric characters.
+//                // We pick the first one that fits the criteria.
+//                if (token.matches("^[a-z0-9]{6,8}$")) {
+//                    return token;
+//                }
+//            }
+//        }
+//
+//        // Handle Standard Links
+//        if (path.matches("^[a-z0-9]{6,8}$")) {
+//            return path;
+//        }
+//
+//        return null;
+//    } catch (Exception e) {
+//        return null;
+//    }
+//}
+//Why this format exists in your assets
+//Marketing teams often use these "Multi-platform" links because they only want to manage one URL for their ad campaigns.
+//
+//        iOS: Adjust detects the User-Agent and uses the 1yp95tzp part.
+//
+//Android: Adjust uses the 1yc2qlqa part.
+//
+//Critical Warning for the "Half-Sheet"
+//Because you are manually building the deepLinkUrl for the Google Play Store, you are acting as the redirect engine. If you pass the combined string 1yc2qlqa_1yp95tzp into the referrer parameter, the Play Store passes that entire mess to the app on install. When the app starts up, the Adjust SDK looks at the referrer, sees a 17-character string instead of a 6-character token, and says: "I don't know what this is," and ignores it.
+
 package com.ua.toolkit.popup;
 
 import com.ua.toolkit.AdConfig;

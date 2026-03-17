@@ -169,11 +169,6 @@ public class AdActivity extends Activity implements
                 getIntent().getIntExtra("PULSE_START_DELAY", 0),
                 getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true),
 
-                // Progress bar
-                getIntent().getBooleanExtra("SHOW_PROGRESS_BAR", true),
-                getIntent().getStringExtra("PROGRESS_BAR_COLOR"),
-                getIntent().getIntExtra("PROGRESS_BAR_HEIGHT_DP", 0),
-
                 // Video
                 getIntent().getBooleanExtra("VIDEO_LOOP", true)
         );
@@ -185,7 +180,6 @@ public class AdActivity extends Activity implements
         uiManager.setShowMuteButton(config.showMuteButton);
         uiManager.setShowSkipButton(config.showSkipButton);
         uiManager.setShowRewardCountdown(config.showRewardCountdown);
-        uiManager.setProgressBarConfig(config.showProgressBar, config.progressBarColor, config.progressBarHeightDp);
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new AdAudioManager(this);
@@ -323,7 +317,6 @@ public class AdActivity extends Activity implements
         if (config.isRewarded && !isFullyWatched) {
             isFullyWatched = true;
             timerManager.markRewardEarned();
-            uiManager.completeProgress();
             uiManager.showRewardEarned();
             uiManager.showCloseButton();
         }
@@ -343,13 +336,6 @@ public class AdActivity extends Activity implements
         if (config.isRewarded && !isFullyWatched) {
             int pos = Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition());
             timerManager.updateRewardTimer(pos, videoPlayer.getDuration());
-            // Rewarded: drive progress from actual video position / duration
-            int duration = videoPlayer.getDuration();
-            if (duration > 0) uiManager.updateProgress(pos / (float) duration);
-        } else if (!config.isRewarded && !closeButtonEarned) {
-            // Interstitial: drive progress from elapsed close-button countdown
-            float elapsed = config.closeButtonDelay - rem;
-            uiManager.updateProgress(elapsed / (float) config.closeButtonDelay);
         }
     }
 
@@ -357,7 +343,6 @@ public class AdActivity extends Activity implements
     {
         Log.d(TAG, "onCountdownComplete — close button earned, popupExpanded=" + (popup != null && popup.isExpanded()));
         closeButtonEarned = true;
-        uiManager.completeProgress();
         if (popup == null || !popup.isExpanded()) uiManager.showCloseButton();
     }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
@@ -466,7 +451,6 @@ public class AdActivity extends Activity implements
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
         if (videoPlayer != null) videoPlayer.stop();
-        if (uiManager != null) uiManager.cancelProgress();
     }
 
     public static void dismissAd() {

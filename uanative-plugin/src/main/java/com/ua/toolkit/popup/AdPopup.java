@@ -316,7 +316,10 @@ public class AdPopup
         try { cardBg.setColor(Color.parseColor(_config != null ? _config.cardBackgroundColor : "#80000000")); }
         catch (IllegalArgumentException e) { cardBg.setColor(Color.parseColor("#80000000")); }
         cardBg.setCornerRadius(dpToPx(_config != null ? _config.cardCornerRadiusDp : 100));
-        card.setBackground(cardBg);
+        if (_config == null || _config.showProgressBar)
+            card.setBackground(cardBg);
+        else
+            card.setBackground(null);
 
         int gravity = resolveCardGravity(_config != null ? _config.cardPosition : "bottom_end");
         FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
@@ -349,15 +352,27 @@ public class AdPopup
 
         TextView getBtn = new TextView(_activity);
         getBtn.setText(_config != null ? _config.getButtonText : "GET");
-        getBtn.setTextColor(Color.WHITE);
-        getBtn.setTextSize(_config != null && _config.getButtonTextSizeSp > 0 ? _config.getButtonTextSizeSp : 14);
+        int textColor = Color.WHITE;
+        if (_config != null && !_config.getButtonTextColor.isEmpty())
+        {
+            try { textColor = Color.parseColor(_config.getButtonTextColor); }
+            catch (IllegalArgumentException ignored) {}
+        }
+        getBtn.setTextColor(textColor);
+        getBtn.setTextSize(_config != null ? _config.getButtonTextSizeSp : 14);
         getBtn.setTypeface(Typeface.DEFAULT_BOLD);
         getBtn.setGravity(Gravity.CENTER);
         getBtn.setBackground(bg);
-        getBtn.setPadding(0, 0, 0, 0);
 
-        int buttonWidth  = dpToPx(_config != null && _config.getButtonWidthDp  > 0 ? _config.getButtonWidthDp  : 165);
-        int buttonHeight = dpToPx(_config != null && _config.getButtonHeightDp > 0 ? _config.getButtonHeightDp : 44);
+        // If width/height not set (-1), use WRAP_CONTENT and add padding so text isn't cramped.
+        // If explicitly set (> 0), use fixed dp and no padding (text centers via Gravity.CENTER).
+        boolean autoWidth  = _config == null || _config.getButtonWidthDp  <= 0;
+        boolean autoHeight = _config == null || _config.getButtonHeightDp <= 0;
+        int buttonWidth  = autoWidth  ? LinearLayout.LayoutParams.WRAP_CONTENT : dpToPx(_config.getButtonWidthDp);
+        int buttonHeight = autoHeight ? LinearLayout.LayoutParams.WRAP_CONTENT : dpToPx(_config.getButtonHeightDp);
+        int padH = autoWidth  ? dpToPx(20) : 0;
+        int padV = autoHeight ? dpToPx(10) : 0;
+        getBtn.setPadding(padH, padV, padH, padV);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 buttonWidth,
@@ -542,6 +557,11 @@ public class AdPopup
      */
     private Animator startPulseAnimation(View target)
     {
+        // Anchor scale to bottom-right corner so the card expands leftward/upward only,
+        // preventing the right edge from clipping past the screen edge.
+        target.setPivotX(target.getWidth());
+        target.setPivotY(target.getHeight());
+
         AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
 
         ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1.0f, 1.05f);
@@ -565,6 +585,8 @@ public class AdPopup
     private void pulsateStage3Card()
     {
         if (_stage3Card == null) return;
+        _stage3Card.setPivotX(_stage3Card.getWidth());
+        _stage3Card.setPivotY(_stage3Card.getHeight());
         ObjectAnimator scaleX = ObjectAnimator.ofFloat(_stage3Card, "scaleX", 1f, 1.04f, 1f);
         ObjectAnimator scaleY = ObjectAnimator.ofFloat(_stage3Card, "scaleY", 1f, 1.04f, 1f);
         AnimatorSet pulse = new AnimatorSet();

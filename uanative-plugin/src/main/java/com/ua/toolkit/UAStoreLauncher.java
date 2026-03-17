@@ -52,16 +52,21 @@ public class UAStoreLauncher
         currentResolver = new HeadlessWebViewResolver(context);
         currentResolver.setTimeout(DEFAULT_TIMEOUT_MS);
 
+        Log.d(TAG, "openLink: resolving click URL — " + url);
+
         currentResolver.resolve(url, new HeadlessWebViewResolver.ResolverCallback()
         {
             @Override
             public void onStoreFound(HeadlessWebViewResolver.StoreInfo storeInfo)
             {
                 currentResolver = null;
+                Log.d(TAG, "openLink: store endpoint resolved — " + storeInfo.toString());
+                Log.d(TAG, "openLink: opening store for packageId=" + storeInfo.packageId);
                 StoreOpener.OpenResult result = StoreOpener.openStore(context, storeInfo);
 
                 if (result.success)
                 {
+                    Log.d(TAG, "openLink: store opened successfully for packageId=" + storeInfo.packageId);
                     if (callback != null) callback.onSuccess(storeInfo.packageId);
                 }
                 else
@@ -146,13 +151,16 @@ public class UAStoreLauncher
 
         currentResolver = new HeadlessWebViewResolver(context);
         currentResolver.setTimeout(DEFAULT_TIMEOUT_MS);
+
+        Log.d(TAG, "fireClickUrl: firing click URL — " + clickUrl);
+
         currentResolver.resolve(clickUrl, new HeadlessWebViewResolver.ResolverCallback()
         {
             @Override
             public void onStoreFound(HeadlessWebViewResolver.StoreInfo storeInfo)
             {
                 // Click event fired successfully — store opens via half-sheet, not here
-                Log.d(TAG, "fireClickUrl: click tracked for packageId=" + storeInfo.packageId);
+                Log.d(TAG, "fireClickUrl: click tracked — " + storeInfo.toString());
                 currentResolver = null;
             }
 

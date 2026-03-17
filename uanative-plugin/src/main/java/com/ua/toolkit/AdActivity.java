@@ -151,14 +151,15 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
                 getIntent().getStringExtra("REWARD_EARNED_TEXT"),
                 getIntent().getStringExtra("GET_BUTTON_COLOR"),
-                getIntent().getIntExtra("GET_BUTTON_WIDTH_DP", 0),
-                getIntent().getIntExtra("GET_BUTTON_HEIGHT_DP", 0),
-                getIntent().getIntExtra("GET_BUTTON_TEXT_SIZE_SP", 0),
-                getIntent().getIntExtra("GET_BUTTON_CORNER_DP", 0),
+                getIntent().getStringExtra("GET_BUTTON_TEXT_COLOR"),
+                getIntent().getIntExtra("GET_BUTTON_WIDTH_DP", -1),
+                getIntent().getIntExtra("GET_BUTTON_HEIGHT_DP", -1),
+                getIntent().getIntExtra("GET_BUTTON_TEXT_SIZE_SP", -1),
+                getIntent().getIntExtra("GET_BUTTON_CORNER_DP", -1),
 
                 // Popup card
                 getIntent().getStringExtra("CARD_BG_COLOR"),
-                getIntent().getIntExtra("CARD_CORNER_DP", 0),
+                getIntent().getIntExtra("CARD_CORNER_DP", -1),
                 getIntent().getStringExtra("CARD_POSITION"),
 
                 // Controls
@@ -167,7 +168,10 @@ public class AdActivity extends Activity implements
                 getIntent().getIntExtra("SKIP_BUTTON_DELAY", 0),
                 getIntent().getBooleanExtra("PULSE_ENABLED", true),
                 getIntent().getIntExtra("PULSE_START_DELAY", 0),
-                getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true)
+                getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true),
+                getIntent().getIntExtra("CARD_TITLE_TEXT_SIZE_SP", 0),
+                getIntent().getStringExtra("REWARD_TEXT_COLOR"),
+                getIntent().getBooleanExtra("SHOW_PROGRESS_BAR", true)
         );
     }
 

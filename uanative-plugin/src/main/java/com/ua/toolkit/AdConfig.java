@@ -4,7 +4,9 @@ import java.io.File;
 
 /**
  * Configuration data for ad display.
- * All visual fields fall back to hardcoded defaults when the server sends 0 / empty string.
+ * Dimension fields (width/height) use -1 to mean "not set" — AdPopup renders WRAP_CONTENT.
+ * Text size and corner radius fall back to hardcoded defaults when -1.
+ * String fields fall back to hardcoded defaults when null/empty.
  */
 public class AdConfig
 {
@@ -20,6 +22,7 @@ public class AdConfig
 
     // GET button visuals
     public final String  getButtonColor;
+    public final String  getButtonTextColor;
     public final int     getButtonWidthDp;
     public final int     getButtonHeightDp;
     public final int     getButtonTextSizeSp;
@@ -41,6 +44,11 @@ public class AdConfig
 
     // Reward
     public final boolean showRewardCountdown;
+    public final int     rewardTextSizeSp;
+    public final String  rewardTextColor;
+
+    // Popup background
+    public final boolean showProgressBar;
 
 
     public AdConfig(
@@ -59,6 +67,7 @@ public class AdConfig
             String  rewardCountdownText,
             String  rewardEarnedText,
             String  getButtonColor,
+            String  getButtonTextColor,
             int     getButtonWidthDp,
             int     getButtonHeightDp,
             int     getButtonTextSizeSp,
@@ -75,7 +84,10 @@ public class AdConfig
             int     skipButtonDelaySec,
             boolean pulseEnabled,
             int     pulseStartDelaySec,
-            boolean showRewardCountdown
+            boolean showRewardCountdown,
+            int     rewardTextSizeSp,
+            String  rewardTextColor,
+            boolean showProgressBar
     )
     {
         this.videoPath            = videoPath;
@@ -89,15 +101,18 @@ public class AdConfig
         this.rewardEarnedText     = nonEmpty(rewardEarnedText,     "Reward earned!");
 
         // GET button — apply fallbacks
-        this.getButtonColor          = nonEmpty(getButtonColor,       "#4CAF50");
-        this.getButtonWidthDp        = getButtonWidthDp        > 0 ? getButtonWidthDp        : 165;
-        this.getButtonHeightDp       = getButtonHeightDp       > 0 ? getButtonHeightDp       : 44;
+        // Width/height: store raw (-1 = not set, AdPopup will use WRAP_CONTENT + padding)
+        // TextSize/CornerRadius: apply default when -1/invalid
+        this.getButtonColor          = nonEmpty(getButtonColor, "#4CAF50");
+        this.getButtonTextColor      = getButtonTextColor != null ? getButtonTextColor : "";
+        this.getButtonWidthDp        = getButtonWidthDp;
+        this.getButtonHeightDp       = getButtonHeightDp;
         this.getButtonTextSizeSp     = getButtonTextSizeSp     > 0 ? getButtonTextSizeSp     : 14;
-        this.getButtonCornerRadiusDp = getButtonCornerRadiusDp > 0 ? getButtonCornerRadiusDp : 100;
+        this.getButtonCornerRadiusDp = getButtonCornerRadiusDp >= 0 ? getButtonCornerRadiusDp : 100;
 
         // Card — apply fallbacks
         this.cardBackgroundColor  = nonEmpty(cardBackgroundColor, "#80000000");
-        this.cardCornerRadiusDp   = cardCornerRadiusDp > 0 ? cardCornerRadiusDp : 100;
+        this.cardCornerRadiusDp   = cardCornerRadiusDp >= 0 ? cardCornerRadiusDp : 100;
         this.cardPosition         = nonEmpty(cardPosition,        "bottom_end");
 
         // Controls
@@ -113,6 +128,11 @@ public class AdConfig
 
         // Reward
         this.showRewardCountdown = showRewardCountdown;
+        this.rewardTextSizeSp    = rewardTextSizeSp > 0 ? rewardTextSizeSp : 0;
+        this.rewardTextColor     = rewardTextColor != null ? rewardTextColor : "";
+
+        // Popup background
+        this.showProgressBar = showProgressBar;
     }
 
     private static String nonEmpty(String value, String fallback)

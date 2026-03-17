@@ -26,7 +26,6 @@ public class AdVideoPlayer
     private int savedPosition = 0;
     private int lastPausedPosition = 0;
     private String currentVideoPath;
-    private boolean currentLoopEnabled = false;
     private boolean isSuspended = false;
 
     public AdVideoPlayer(VideoView videoView, Listener listener)
@@ -35,10 +34,9 @@ public class AdVideoPlayer
         this.listener = listener;
     }
 
-    public void load(String videoPath, boolean loopVideo)
+    public void load(String videoPath)
     {
         currentVideoPath = videoPath;
-        currentLoopEnabled = loopVideo;
         videoView.setVideoPath(videoPath);
 
         videoView.setOnPreparedListener(mp ->
@@ -73,12 +71,8 @@ public class AdVideoPlayer
         {
             Log.d(TAG, "Video completed");
             listener.onVideoCompleted();
-
-            if (loopVideo)
-            {
-                videoView.seekTo(0);
-                videoView.start();
-            }
+            videoView.seekTo(0);
+            videoView.start();
         });
 
         videoView.setOnErrorListener((mp, what, extra) ->
@@ -158,7 +152,7 @@ public class AdVideoPlayer
             // MediaPlayer was fully released — reload from saved position
             isSuspended = false;
             Log.d(TAG, "resume: was suspended — reloading from position=" + savedPosition);
-            load(currentVideoPath, currentLoopEnabled);
+            load(currentVideoPath);
             return;
         }
         int pos = videoView.getCurrentPosition();

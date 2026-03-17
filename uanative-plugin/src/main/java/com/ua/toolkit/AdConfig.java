@@ -42,8 +42,6 @@ public class AdConfig
     // Reward
     public final boolean showRewardCountdown;
 
-    // Video
-    public final boolean videoLoop;
 
     public AdConfig(
             // Core
@@ -77,10 +75,7 @@ public class AdConfig
             int     skipButtonDelaySec,
             boolean pulseEnabled,
             int     pulseStartDelaySec,
-            boolean showRewardCountdown,
-
-            // Video
-            boolean videoLoop
+            boolean showRewardCountdown
     )
     {
         this.videoPath            = videoPath;
@@ -118,9 +113,6 @@ public class AdConfig
 
         // Reward
         this.showRewardCountdown = showRewardCountdown;
-
-        // Video
-        this.videoLoop = videoLoop;
     }
 
     private static String nonEmpty(String value, String fallback)

@@ -167,10 +167,7 @@ public class AdActivity extends Activity implements
                 getIntent().getIntExtra("SKIP_BUTTON_DELAY", 0),
                 getIntent().getBooleanExtra("PULSE_ENABLED", true),
                 getIntent().getIntExtra("PULSE_START_DELAY", 0),
-                getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true),
-
-                // Video
-                getIntent().getBooleanExtra("VIDEO_LOOP", true)
+                getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true)
         );
     }
 
@@ -271,7 +268,7 @@ public class AdActivity extends Activity implements
     }
 
     private void startAd() {
-        videoPlayer.load(config.videoPath, config.videoLoop);
+        videoPlayer.load(config.videoPath);
         prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
     }
 

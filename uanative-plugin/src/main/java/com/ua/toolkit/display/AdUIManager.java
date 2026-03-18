@@ -14,8 +14,11 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.VideoView;
+
+import com.ua.toolkit.R;
 
 /**
  * Manages UI creation and updates for ad display.
@@ -45,7 +48,7 @@ public class AdUIManager
     // Views
     private FrameLayout rootLayout;
     private VideoView videoView;
-    private Button muteButton;
+    private ImageButton muteButton;
     private TextView timerText;
     private TextView skipButton;
     private TextView closeButton;
@@ -145,17 +148,11 @@ public class AdUIManager
 
     private void createMuteButton()
     {
-        muteButton = new Button(activity);
-        muteButton.setText("🔊");
-        muteButton.setTextColor(Color.WHITE);
-        muteButton.setTextSize(14);
-        muteButton.setIncludeFontPadding(false);
-        muteButton.setMinHeight(0);
-        muteButton.setMinimumHeight(0);
-        muteButton.setMinWidth(0);
-        muteButton.setMinimumWidth(0);
-        muteButton.setPadding(0, 0, 0, 0);
-        muteButton.setGravity(Gravity.CENTER);
+        muteButton = new ImageButton(activity);
+        muteButton.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        int pad = dpToPx(6);
+        muteButton.setPadding(pad, pad, pad, pad);
+        muteButton.setImageResource(R.drawable.ic_volume_on);
 
         muteButton.setBackground(createCircleBackground());
         clearBackgroundTint(muteButton);
@@ -166,6 +163,11 @@ public class AdUIManager
         muteButton.setLayoutParams(params);
         muteButton.setVisibility(disableMuteButton ? View.GONE : View.VISIBLE);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
+    }
+
+    private void updateMuteButtonIcon(boolean isMuted)
+    {
+        muteButton.setImageResource(isMuted ? R.drawable.ic_volume_off : R.drawable.ic_volume_on);
     }
 
     private void createTimerText()
@@ -417,10 +419,7 @@ public class AdUIManager
 
     public void updateMuteButton(boolean isMuted)
     {
-        if (muteButton != null)
-        {
-            muteButton.setText(isMuted ? "🔇" : "🔊");
-        }
+        if (muteButton != null) updateMuteButtonIcon(isMuted);
     }
 
     public boolean isCloseButtonVisible()

@@ -293,13 +293,13 @@ public class AdPopup
         getBtn.setGravity(Gravity.CENTER);
         getBtn.setBackground(bg);
 
-        // If width/height not set (-1), use WRAP_CONTENT and add padding so text isn't cramped.
+        // If width not set (-1), use 165dp default. If height not set (-1), use WRAP_CONTENT + vertical padding.
         // If explicitly set (> 0), use fixed dp and no padding (text centers via Gravity.CENTER).
         boolean autoWidth  = _config == null || _config.getButtonWidthDp  <= 0;
         boolean autoHeight = _config == null || _config.getButtonHeightDp <= 0;
-        int buttonWidth  = autoWidth  ? LinearLayout.LayoutParams.WRAP_CONTENT : dpToPx(_config.getButtonWidthDp);
+        int buttonWidth  = autoWidth  ? dpToPx(165) : dpToPx(_config.getButtonWidthDp);
         int buttonHeight = autoHeight ? LinearLayout.LayoutParams.WRAP_CONTENT : dpToPx(_config.getButtonHeightDp);
-        int padH = autoWidth  ? dpToPx(20) : 0;
+        int padH = 0;
         int padV = autoHeight ? dpToPx(10) : 0;
         getBtn.setPadding(padH, padV, padH, padV);
 

@@ -486,11 +486,6 @@ public class AdPopup
      */
     private Animator startPulseAnimation(View target)
     {
-        // Anchor scale to bottom-right corner so the card expands leftward/upward only,
-        // preventing the right edge from clipping past the screen edge.
-        target.setPivotX(target.getWidth());
-        target.setPivotY(target.getHeight());
-
         AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
 
         ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1.0f, 1.05f);

@@ -40,7 +40,7 @@ public class AdUIManager
     private final boolean isRewarded;
     private String  rewardCountdownText  = "Reward in: %ds";
     private String  rewardEarnedText     = "Reward earned!";
-    private boolean showRewardCountdown  = true;
+    private boolean disableRewardCountdown = false;
 
     // Views
     private FrameLayout rootLayout;
@@ -59,8 +59,8 @@ public class AdUIManager
     private boolean insetsApplied = false; // guard: only apply once — overlays cause transient re-dispatches
     private InsetsReadyCallback insetsReadyCallback;
 
-    private boolean      showMuteButton     = true;
-    private boolean      showSkipButton     = true;
+    private boolean      disableMuteButton  = false;
+    private boolean      disableSkipButton  = false;
 
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
@@ -74,9 +74,9 @@ public class AdUIManager
             this.rewardEarnedText = rewardEarnedText;
     }
 
-    public void setShowMuteButton(boolean show)        { this.showMuteButton = show; }
-    public void setShowSkipButton(boolean show)        { this.showSkipButton = show; }
-    public void setShowRewardCountdown(boolean show)   { this.showRewardCountdown = show; }
+    public void setDisableMuteButton(boolean disable)        { this.disableMuteButton = disable; }
+    public void setDisableSkipButton(boolean disable)        { this.disableSkipButton = disable; }
+    public void setDisableRewardCountdown(boolean disable)   { this.disableRewardCountdown = disable; }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
     {
@@ -164,7 +164,7 @@ public class AdUIManager
         params.topMargin = dpToPx(8);
         params.leftMargin = dpToPx(20);
         muteButton.setLayoutParams(params);
-        muteButton.setVisibility(showMuteButton ? View.VISIBLE : View.GONE);
+        muteButton.setVisibility(disableMuteButton ? View.GONE : View.VISIBLE);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
     }
 
@@ -180,7 +180,7 @@ public class AdUIManager
         timerText.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
-        timerText.setVisibility(isRewarded && showRewardCountdown ? View.VISIBLE : View.GONE);
+        timerText.setVisibility(isRewarded && !disableRewardCountdown ? View.VISIBLE : View.GONE);
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -396,7 +396,7 @@ public class AdUIManager
 
     public void showSkipButton()
     {
-        if (!showSkipButton) return;
+        if (disableSkipButton) return;
         if (skipButton == null || skipButton.getVisibility() == View.VISIBLE) return;
         skipButton.setVisibility(View.VISIBLE);
     }

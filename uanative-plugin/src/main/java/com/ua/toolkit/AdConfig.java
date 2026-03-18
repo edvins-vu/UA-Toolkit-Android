@@ -10,17 +10,18 @@ import java.io.File;
  */
 public class AdConfig
 {
+    // Core
     public final String  videoPath;
     public final String  clickUrl;
     public final boolean isRewarded;
+    public final String  bundleId;
+
+    // Timing
     public final int     closeButtonDelay;
     public final int     peekDelay;
-    public final String  bundleId;
-    public final String  getButtonText;
-    public final String  rewardCountdownText;
-    public final String  rewardEarnedText;
 
-    // GET button visuals
+    // GET button
+    public final String  getButtonText;
     public final String  getButtonColor;
     public final String  getButtonTextColor;
     public final int     getButtonWidthDp;
@@ -28,27 +29,24 @@ public class AdConfig
     public final int     getButtonTextSizeSp;
     public final int     getButtonCornerRadiusDp;
 
-    // Popup card visuals
+    // Popup card
     public final String  cardBackgroundColor;
     public final int     cardCornerRadiusDp;
-    public final String  cardPosition;         // "bottom_end" | "bottom_center" | "bottom_start"
 
     // Controls
-    public final boolean showMuteButton;
-    public final boolean showSkipButton;
+    public final boolean disableMuteButton;
+    public final boolean disableSkipButton;
     public final int     skipButtonDelaySec;
-
-    // Animation
-    public final boolean pulseEnabled;
+    public final boolean disablePulse;
     public final int     pulseStartDelaySec;
+    public final boolean disablePopupBackground;
 
-    // Reward
-    public final boolean showRewardCountdown;
+    // Reward texts
+    public final String  rewardCountdownText;
+    public final String  rewardEarnedText;
+    public final boolean disableRewardCountdown;
     public final int     rewardTextSizeSp;
     public final String  rewardTextColor;
-
-    // Popup background
-    public final boolean showProgressBar;
 
 
     public AdConfig(
@@ -56,16 +54,16 @@ public class AdConfig
             String  videoPath,
             String  clickUrl,
             boolean isRewarded,
+            String  bundleId,
 
             // Timing
             int     closeButtonDelay,
             int     peekDelay,
-            String  bundleId,
+            int     skipButtonDelaySec,
+            int     pulseStartDelaySec,
 
             // GET button
             String  getButtonText,
-            String  rewardCountdownText,
-            String  rewardEarnedText,
             String  getButtonColor,
             String  getButtonTextColor,
             int     getButtonWidthDp,
@@ -76,63 +74,62 @@ public class AdConfig
             // Popup card
             String  cardBackgroundColor,
             int     cardCornerRadiusDp,
-            String  cardPosition,
 
             // Controls
-            boolean showMuteButton,
-            boolean showSkipButton,
-            int     skipButtonDelaySec,
-            boolean pulseEnabled,
-            int     pulseStartDelaySec,
-            boolean showRewardCountdown,
+            boolean disableMuteButton,
+            boolean disableSkipButton,
+            boolean disablePulse,
+            boolean disablePopupBackground,
+
+            // Reward texts
+            String  rewardCountdownText,
+            String  rewardEarnedText,
+            boolean disableRewardCountdown,
             int     rewardTextSizeSp,
-            String  rewardTextColor,
-            boolean showProgressBar
+            String  rewardTextColor
     )
     {
-        this.videoPath            = videoPath;
-        this.clickUrl             = clickUrl             != null ? clickUrl             : "";
-        this.isRewarded           = isRewarded;
-        this.closeButtonDelay     = closeButtonDelay;
-        this.peekDelay            = peekDelay;
-        this.bundleId             = bundleId             != null ? bundleId             : "";
-        this.getButtonText        = nonEmpty(getButtonText,        "GET");
-        this.rewardCountdownText  = nonEmpty(rewardCountdownText,  "Reward in: %ds");
-        this.rewardEarnedText     = nonEmpty(rewardEarnedText,     "Reward earned!");
+        // Core
+        this.videoPath  = videoPath;
+        this.clickUrl   = clickUrl  != null ? clickUrl  : "";
+        this.isRewarded = isRewarded;
+        this.bundleId   = bundleId  != null ? bundleId  : "";
+
+        // Timing
+        this.closeButtonDelay = closeButtonDelay;
+        this.peekDelay        = peekDelay;
+        this.skipButtonDelaySec    = skipButtonDelaySec > 0
+                ? skipButtonDelaySec
+                : Math.max(closeButtonDelay - 3, 0);
+        this.pulseStartDelaySec    = pulseStartDelaySec > 0 ? pulseStartDelaySec : 5;
 
         // GET button — apply fallbacks
         // Width/height: store raw (-1 = not set, AdPopup will use WRAP_CONTENT + padding)
         // TextSize/CornerRadius: apply default when -1/invalid
+        this.getButtonText           = nonEmpty(getButtonText, "GET");
         this.getButtonColor          = nonEmpty(getButtonColor, "#4CAF50");
-        this.getButtonTextColor      = getButtonTextColor != null ? getButtonTextColor : "";
         this.getButtonWidthDp        = getButtonWidthDp;
         this.getButtonHeightDp       = getButtonHeightDp;
         this.getButtonTextSizeSp     = getButtonTextSizeSp     > 0 ? getButtonTextSizeSp     : 14;
         this.getButtonCornerRadiusDp = getButtonCornerRadiusDp >= 0 ? getButtonCornerRadiusDp : 100;
+        this.getButtonTextColor      = getButtonTextColor != null ? getButtonTextColor : "#FFFFFF";
 
-        // Card — apply fallbacks
-        this.cardBackgroundColor  = nonEmpty(cardBackgroundColor, "#80000000");
-        this.cardCornerRadiusDp   = cardCornerRadiusDp >= 0 ? cardCornerRadiusDp : 100;
-        this.cardPosition         = nonEmpty(cardPosition,        "bottom_end");
+        // Popup card — apply fallbacks
+        this.cardBackgroundColor = nonEmpty(cardBackgroundColor, "#80000000");
+        this.cardCornerRadiusDp  = cardCornerRadiusDp >= 0 ? cardCornerRadiusDp : 100;
 
         // Controls
-        this.showMuteButton    = showMuteButton;
-        this.showSkipButton    = showSkipButton;
-        this.skipButtonDelaySec = skipButtonDelaySec > 0
-                ? skipButtonDelaySec
-                : Math.max(closeButtonDelay - 3, 0);
+        this.disableMuteButton     = disableMuteButton;
+        this.disableSkipButton     = disableSkipButton;
+        this.disablePulse          = disablePulse;
+        this.disablePopupBackground = disablePopupBackground;
 
-        // Animation
-        this.pulseEnabled       = pulseEnabled;
-        this.pulseStartDelaySec = pulseStartDelaySec > 0 ? pulseStartDelaySec : 5;
-
-        // Reward
-        this.showRewardCountdown = showRewardCountdown;
-        this.rewardTextSizeSp    = rewardTextSizeSp > 0 ? rewardTextSizeSp : 0;
-        this.rewardTextColor     = rewardTextColor != null ? rewardTextColor : "";
-
-        // Popup background
-        this.showProgressBar = showProgressBar;
+        // Reward texts
+        this.rewardCountdownText     = nonEmpty(rewardCountdownText, "Reward in: %ds");
+        this.rewardEarnedText        = nonEmpty(rewardEarnedText,    "Reward earned!");
+        this.disableRewardCountdown  = disableRewardCountdown;
+        this.rewardTextSizeSp     = rewardTextSizeSp > 0 ? rewardTextSizeSp : 14;
+        this.rewardTextColor      = rewardTextColor != null ? rewardTextColor : "#FFFFFF";
     }
 
     private static String nonEmpty(String value, String fallback)

@@ -140,16 +140,16 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("VIDEO_PATH"),
                 getIntent().getStringExtra("CLICK_URL"),
                 getIntent().getBooleanExtra("IS_REWARDED", false),
+                getIntent().getStringExtra("BUNDLE_ID"),
 
                 // Timing
                 getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
                 getIntent().getIntExtra("POPUP_PEEK_DELAY", 5),
-                getIntent().getStringExtra("BUNDLE_ID"),
+                getIntent().getIntExtra("SKIP_BUTTON_DELAY", 0),
+                getIntent().getIntExtra("PULSE_START_DELAY", 0),
 
                 // GET button
                 getIntent().getStringExtra("GET_BUTTON_TEXT"),
-                getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
-                getIntent().getStringExtra("REWARD_EARNED_TEXT"),
                 getIntent().getStringExtra("GET_BUTTON_COLOR"),
                 getIntent().getStringExtra("GET_BUTTON_TEXT_COLOR"),
                 getIntent().getIntExtra("GET_BUTTON_WIDTH_DP", -1),
@@ -160,27 +160,28 @@ public class AdActivity extends Activity implements
                 // Popup card
                 getIntent().getStringExtra("CARD_BG_COLOR"),
                 getIntent().getIntExtra("CARD_CORNER_DP", -1),
-                getIntent().getStringExtra("CARD_POSITION"),
 
                 // Controls
-                getIntent().getBooleanExtra("SHOW_MUTE_BUTTON", true),
-                getIntent().getBooleanExtra("SHOW_SKIP_BUTTON", true),
-                getIntent().getIntExtra("SKIP_BUTTON_DELAY", 0),
-                getIntent().getBooleanExtra("PULSE_ENABLED", true),
-                getIntent().getIntExtra("PULSE_START_DELAY", 0),
-                getIntent().getBooleanExtra("SHOW_REWARD_COUNTDOWN", true),
-                getIntent().getIntExtra("CARD_TITLE_TEXT_SIZE_SP", 0),
-                getIntent().getStringExtra("REWARD_TEXT_COLOR"),
-                getIntent().getBooleanExtra("SHOW_PROGRESS_BAR", true)
+                getIntent().getBooleanExtra("DISABLE_MUTE_BUTTON", false),
+                getIntent().getBooleanExtra("DISABLE_SKIP_BUTTON", false),
+                getIntent().getBooleanExtra("DISABLE_PULSE", false),
+                getIntent().getBooleanExtra("DISABLE_POPUP_BACKGROUND", false),
+
+                // Reward texts
+                getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
+                getIntent().getStringExtra("REWARD_EARNED_TEXT"),
+                getIntent().getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
+                getIntent().getIntExtra("REWARD_TEXT_SIZE_SP", 0),
+                getIntent().getStringExtra("REWARD_TEXT_COLOR")
         );
     }
 
     private void initializeManagers() {
         uiManager = new AdUIManager(this, this, config.isRewarded,
                 config.rewardCountdownText, config.rewardEarnedText);
-        uiManager.setShowMuteButton(config.showMuteButton);
-        uiManager.setShowSkipButton(config.showSkipButton);
-        uiManager.setShowRewardCountdown(config.showRewardCountdown);
+        uiManager.setDisableMuteButton(config.disableMuteButton);
+        uiManager.setDisableSkipButton(config.disableSkipButton);
+        uiManager.setDisableRewardCountdown(config.disableRewardCountdown);
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new AdAudioManager(this);

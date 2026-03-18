@@ -1,62 +1,3 @@
-//In Adjust, when a marketer creates a single link to cover multiple apps (like an Android version and an iOS version of I Am Cat), Adjust combines the individual 6–8 character tokens into a single string separated by an underscore.
-//
-//Why your current code fails on these URLs
-//Your current extractAdjustToken method uses getLastPathSegment(). Here is what happens with your specific example:
-//
-//Input: https://app.adjust.com/1yc2qlqa_1yp95tzp?campaign=...
-//
-//getLastPathSegment() returns: "1yc2qlqa_1yp95tzp"
-//
-//The Result: You are passing a 17-character string as the adjust_tracker in your intent.
-//
-//Google Play and Adjust will both reject this. * Google Play expects a single, valid token.
-//
-//Adjust’s Referrer API specifically looks for the individual 6–8 character token assigned to the Android app. If it sees the combined string with an underscore, it won't be able to map the install to the correct tracker, and the user will likely be marked as "Organic."
-//
-//The 2026 Solution: Smart Token Extraction
-//To fix this, you need to detect if there is an underscore and, if so, extract the correct part. Usually, the order in a combined link corresponds to the order the apps were added (e.g., AndroidToken_iOSToken).
-//
-//However, the safest way is to let the Adjust SDK handle the resolution, or use a more surgical extraction method:
-//
-//Java
-//private static String extractAdjustToken(String clickUrl) {
-//    if (clickUrl == null || clickUrl.isEmpty()) return null;
-//    try {
-//        String path = Uri.parse(clickUrl).getLastPathSegment();
-//        if (path == null) return null;
-//
-//        // Handle Combined Links (e.g., "1yc2qlqa_1yp95tzp")
-//        if (path.contains("_")) {
-//            String[] tokens = path.split("_");
-//            for (String token : tokens) {
-//                // Adjust tokens are 6-8 alphanumeric characters.
-//                // We pick the first one that fits the criteria.
-//                if (token.matches("^[a-z0-9]{6,8}$")) {
-//                    return token;
-//                }
-//            }
-//        }
-//
-//        // Handle Standard Links
-//        if (path.matches("^[a-z0-9]{6,8}$")) {
-//            return path;
-//        }
-//
-//        return null;
-//    } catch (Exception e) {
-//        return null;
-//    }
-//}
-//Why this format exists in your assets
-//Marketing teams often use these "Multi-platform" links because they only want to manage one URL for their ad campaigns.
-//
-//        iOS: Adjust detects the User-Agent and uses the 1yp95tzp part.
-//
-//Android: Adjust uses the 1yc2qlqa part.
-//
-//Critical Warning for the "Half-Sheet"
-//Because you are manually building the deepLinkUrl for the Google Play Store, you are acting as the redirect engine. If you pass the combined string 1yc2qlqa_1yp95tzp into the referrer parameter, the Play Store passes that entire mess to the app on install. When the app starts up, the Adjust SDK looks at the referrer, sees a 17-character string instead of a 6-character token, and says: "I don't know what this is," and ignores it.
-
 package com.ua.toolkit.popup;
 
 import com.ua.toolkit.AdConfig;
@@ -316,31 +257,19 @@ public class AdPopup
         try { cardBg.setColor(Color.parseColor(_config != null ? _config.cardBackgroundColor : "#80000000")); }
         catch (IllegalArgumentException e) { cardBg.setColor(Color.parseColor("#80000000")); }
         cardBg.setCornerRadius(dpToPx(_config != null ? _config.cardCornerRadiusDp : 100));
-        if (_config == null || _config.showProgressBar)
+        if (_config == null || !_config.disablePopupBackground)
             card.setBackground(cardBg);
         else
             card.setBackground(null);
 
-        int gravity = resolveCardGravity(_config != null ? _config.cardPosition : "bottom_end");
         FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, gravity);
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
         cardLp.rightMargin  = _cardRightInset  + dpToPx(24);
         cardLp.bottomMargin = _cardBottomInset + dpToPx(24);
         card.setLayoutParams(cardLp);
 
         buttonOut[0] = addGetButton(card, onGetClick);
         return card;
-    }
-
-    private int resolveCardGravity(String position)
-    {
-        if (position == null) return Gravity.BOTTOM | Gravity.END;
-        switch (position)
-        {
-            case "bottom_start":  return Gravity.BOTTOM | Gravity.START;
-            case "bottom_center": return Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-            default:              return Gravity.BOTTOM | Gravity.END;
-        }
     }
 
     private TextView addGetButton(LinearLayout parent, Runnable onClick)
@@ -620,7 +549,7 @@ public class AdPopup
                 .setInterpolator(new DecelerateInterpolator())
                 .start();
         // Start pulse countdown from the moment the card is visible
-        if (_config != null && _config.pulseEnabled) {
+        if (_config != null && !_config.disablePulse) {
             long pulseDelayMs = (_config.pulseStartDelaySec > 0 ? _config.pulseStartDelaySec : 5) * 1000L;
             _stage1PulseRunnable = () -> {
                 if (!_isCancelled && _stage1GetButton != null)
@@ -636,7 +565,7 @@ public class AdPopup
         if (_stage3PulseRunnable != null) _handler.removeCallbacks(_stage3PulseRunnable);
         if (_stage3PulseAnimator != null) { _stage3PulseAnimator.cancel(); _stage3PulseAnimator = null; }
         if (_stage3GetButton != null) { _stage3GetButton.setScaleX(1f); _stage3GetButton.setScaleY(1f); }
-        if (_config == null || !_config.pulseEnabled) return;
+        if (_config == null || _config.disablePulse) return;
         long pulseDelayMs = (_config.pulseStartDelaySec > 0 ? _config.pulseStartDelaySec : 5) * 1000L;
         _stage3PulseRunnable = () -> {
             if (!_isCancelled && _stage3GetButton != null)

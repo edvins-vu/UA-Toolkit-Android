@@ -145,8 +145,8 @@ public class AdActivity extends Activity implements
                 // Timing
                 getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
                 getIntent().getIntExtra("POPUP_PEEK_DELAY", 5),
-                getIntent().getIntExtra("SKIP_BUTTON_DELAY", 0),
-                getIntent().getIntExtra("PULSE_START_DELAY", 0),
+                getIntent().getIntExtra("SKIP_BUTTON_DELAY", -1),
+                getIntent().getIntExtra("PULSE_START_DELAY", -1),
 
                 // GET button
                 getIntent().getStringExtra("GET_BUTTON_TEXT"),

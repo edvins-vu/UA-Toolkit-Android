@@ -143,8 +143,8 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("BUNDLE_ID"),
 
                 // Timing
-                getIntent().getIntExtra("CLOSE_BUTTON_DELAY", 5),
-                getIntent().getIntExtra("POPUP_PEEK_DELAY", 5),
+                getIntent().getIntExtra("CLOSE_BUTTON_DELAY", -1),
+                getIntent().getIntExtra("POPUP_PEEK_DELAY", -1),
                 getIntent().getIntExtra("SKIP_BUTTON_DELAY", -1),
                 getIntent().getIntExtra("PULSE_START_DELAY", -1),
 
@@ -171,7 +171,7 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
                 getIntent().getStringExtra("REWARD_EARNED_TEXT"),
                 getIntent().getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
-                getIntent().getIntExtra("REWARD_TEXT_SIZE_SP", 0),
+                getIntent().getIntExtra("REWARD_TEXT_SIZE_SP", -1),
                 getIntent().getStringExtra("REWARD_TEXT_COLOR")
         );
     }

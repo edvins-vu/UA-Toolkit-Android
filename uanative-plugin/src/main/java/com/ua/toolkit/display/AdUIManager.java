@@ -44,6 +44,8 @@ public class AdUIManager
     private String  rewardCountdownText  = "Reward in: %ds";
     private String  rewardEarnedText     = "Reward earned!";
     private boolean disableRewardCountdown = false;
+    private int     rewardTextSizeSp     = 14;
+    private String  rewardTextColor      = "#FFFFFF";
 
     // Views
     private FrameLayout rootLayout;
@@ -64,6 +66,7 @@ public class AdUIManager
 
     private boolean      disableMuteButton  = false;
     private boolean      disableSkipButton  = false;
+    private final AdUILayout _layout = new AdUILayout();
 
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
@@ -80,6 +83,8 @@ public class AdUIManager
     public void setDisableMuteButton(boolean disable)        { this.disableMuteButton = disable; }
     public void setDisableSkipButton(boolean disable)        { this.disableSkipButton = disable; }
     public void setDisableRewardCountdown(boolean disable)   { this.disableRewardCountdown = disable; }
+    public void setRewardTextSizeSp(int sp)                  { this.rewardTextSizeSp = sp; }
+    public void setRewardTextColor(String hex)               { this.rewardTextColor = hex; }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
     {
@@ -150,16 +155,16 @@ public class AdUIManager
     {
         muteButton = new ImageButton(activity);
         muteButton.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
-        int pad = dpToPx(6);
+        int pad = dpToPx(_layout.muteButtonPaddingDp);
         muteButton.setPadding(pad, pad, pad, pad);
         muteButton.setImageResource(R.drawable.ic_volume_on);
 
         muteButton.setBackground(createCircleBackground());
         clearBackgroundTint(muteButton);
 
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(28), dpToPx(28), Gravity.TOP | Gravity.START);
-        params.topMargin = dpToPx(8);
-        params.leftMargin = dpToPx(20);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(_layout.muteButtonSizeDp), dpToPx(_layout.muteButtonSizeDp), Gravity.TOP | Gravity.START);
+        params.topMargin = dpToPx(_layout.muteButtonTopMarginDp);
+        params.leftMargin = dpToPx(_layout.muteButtonLeftMarginDp);
         muteButton.setLayoutParams(params);
         muteButton.setVisibility(disableMuteButton ? View.GONE : View.VISIBLE);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
@@ -173,13 +178,14 @@ public class AdUIManager
     private void createTimerText()
     {
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor("#80000000"));
-        bg.setCornerRadius(dpToPx(23));
+        bg.setColor(Color.parseColor(_layout.timerBackgroundColor));
+        bg.setCornerRadius(dpToPx(_layout.timerCornerRadiusDp));
 
         timerText = new TextView(activity);
-        timerText.setTextColor(Color.WHITE);
-        timerText.setTextSize(11);
-        timerText.setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6));
+        timerText.setTextColor(Color.parseColor(rewardTextColor));
+        timerText.setTextSize(rewardTextSizeSp);
+        timerText.setPadding(dpToPx(_layout.timerPaddingHorizontalDp), dpToPx(_layout.timerPaddingVerticalDp),
+                dpToPx(_layout.timerPaddingHorizontalDp), dpToPx(_layout.timerPaddingVerticalDp));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
         timerText.setVisibility(isRewarded && !disableRewardCountdown ? View.VISIBLE : View.GONE);
@@ -188,7 +194,7 @@ public class AdUIManager
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        params.topMargin = dpToPx(8);
+        params.topMargin = dpToPx(_layout.timerTopMarginDp);
         timerText.setLayoutParams(params);
     }
 
@@ -197,16 +203,16 @@ public class AdUIManager
         buttonContainer = new FrameLayout(activity);
         // WRAP_CONTENT so the container expands to accommodate inset padding applied in applyInsets()
         FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, dpToPx(28), Gravity.TOP | Gravity.END);
-        containerParams.topMargin = dpToPx(8);
-        containerParams.rightMargin = dpToPx(28); // minimal initial value; zeroed in applyInsets()
+                FrameLayout.LayoutParams.WRAP_CONTENT, dpToPx(_layout.buttonContainerHeightDp), Gravity.TOP | Gravity.END);
+        containerParams.topMargin = dpToPx(_layout.buttonContainerTopMarginDp);
+        containerParams.rightMargin = dpToPx(_layout.buttonContainerRightDp); // minimal initial value; zeroed in applyInsets()
         buttonContainer.setLayoutParams(containerParams);
 
         // Skip button — shown after 3 s; tap immediately reveals close button
         skipButton = new TextView(activity);
         skipButton.setText("⏭");
-        skipButton.setTextColor(Color.argb(150, 255, 255, 255));
-        skipButton.setTextSize(15);
+        skipButton.setTextColor(_layout.skipButtonTextColor);
+        skipButton.setTextSize(_layout.skipButtonTextSizeSp);
         skipButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         skipButton.setGravity(Gravity.CENTER);
         skipButton.setIncludeFontPadding(false);
@@ -216,7 +222,7 @@ public class AdUIManager
         skipButton.setMinimumHeight(0);
         skipButton.setMinWidth(0);
         skipButton.setMinimumWidth(0);
-        skipButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(28), dpToPx(28), Gravity.CENTER));
+        skipButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(_layout.skipButtonSizeDp), dpToPx(_layout.skipButtonSizeDp), Gravity.CENTER));
         skipButton.setVisibility(View.GONE);
         skipButton.setOnClickListener(v -> showCloseButton());
 
@@ -224,18 +230,18 @@ public class AdUIManager
         closeButton = new TextView(activity);
         closeButton.setText("✕");
         closeButton.setTextColor(Color.WHITE);
-        closeButton.setTextSize(10);
+        closeButton.setTextSize(_layout.closeButtonTextSizeSp);
         closeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         closeButton.setGravity(Gravity.CENTER);
         closeButton.setIncludeFontPadding(false);
         closeButton.setVisibility(View.GONE);
-        closeButton.setBackground(createRoundedBackground(dpToPx(8)));
+        closeButton.setBackground(createRoundedBackground(dpToPx(_layout.closeButtonCornerRadiusDp)));
         closeButton.setPadding(0, 0, 0, 0);
         closeButton.setMinHeight(0);
         closeButton.setMinimumHeight(0);
         closeButton.setMinWidth(0);
         closeButton.setMinimumWidth(0);
-        closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(20), dpToPx(20), Gravity.CENTER));
+        closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(_layout.closeButtonSizeDp), dpToPx(_layout.closeButtonSizeDp), Gravity.CENTER));
         closeButton.setOnClickListener(v -> listener.onCloseClicked());
 
         buttonContainer.addView(skipButton);
@@ -302,8 +308,8 @@ public class AdUIManager
 
     public void applyInsets()
     {
-        int top  = Math.max(savedTopInset,  dpToPx(8));
-        int left = savedLeftInset + dpToPx(20);
+        int top  = Math.max(savedTopInset,  dpToPx(_layout.minTopInsetDp));
+        int left = savedLeftInset + dpToPx(_layout.muteButtonLeftMarginDp);
 
         // Mute button — offset from left edge / notch via margin
         FrameLayout.LayoutParams lpM = (FrameLayout.LayoutParams) muteButton.getLayoutParams();
@@ -323,7 +329,7 @@ public class AdUIManager
         lpC.topMargin   = top;
         lpC.rightMargin = 0;
         buttonContainer.setLayoutParams(lpC);
-        buttonContainer.setPadding(0, 0, savedRightInset + dpToPx(28), 0);
+        buttonContainer.setPadding(0, 0, savedRightInset + dpToPx(_layout.buttonContainerRightDp), 0);
 
         // Notify popup so it can position its cards above the navigation bar
         if (insetsReadyCallback != null)
@@ -446,8 +452,8 @@ public class AdUIManager
     {
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(Color.argb(191, 38, 38, 38));
-        bg.setStroke(dpToPx(0.75f), Color.argb(51, 255, 255, 255));
+        bg.setColor(_layout.buttonBgColor);
+        bg.setStroke(dpToPx(_layout.buttonBorderWidthDp), _layout.buttonBorderColor);
         return bg;
     }
 
@@ -462,8 +468,8 @@ public class AdUIManager
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.RECTANGLE);
         bg.setCornerRadius(cornerRadius);
-        bg.setColor(Color.argb(191, 38, 38, 38));
-        bg.setStroke(dpToPx(0.75f), Color.argb(51, 255, 255, 255));
+        bg.setColor(_layout.buttonBgColor);
+        bg.setStroke(dpToPx(_layout.buttonBorderWidthDp), _layout.buttonBorderColor);
         return bg;
     }
 

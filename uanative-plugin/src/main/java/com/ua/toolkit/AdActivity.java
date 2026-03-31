@@ -182,6 +182,8 @@ public class AdActivity extends Activity implements
         uiManager.setDisableMuteButton(config.disableMuteButton);
         uiManager.setDisableSkipButton(config.disableSkipButton);
         uiManager.setDisableRewardCountdown(config.disableRewardCountdown);
+        uiManager.setRewardTextSizeSp(config.rewardTextSizeSp);
+        uiManager.setRewardTextColor(config.rewardTextColor);
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new AdAudioManager(this);

@@ -9,9 +9,7 @@ import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -41,7 +39,6 @@ public class AdPopup
     public static final int REQUEST_PLAY_OVERLAY = 1001;
 
     private static final String TAG = "AdPopup";
-    private static final int ANIM_DURATION_MS = 280;
 
     private enum State { HIDDEN, PEEK, PLAY_OVERLAY, COLLAPSED }
 
@@ -49,6 +46,7 @@ public class AdPopup
     private final FrameLayout _rootLayout;
     private final Listener _listener;
     private final Handler _handler = new Handler(Looper.getMainLooper());
+    private final AdPopupLayout _layout = new AdPopupLayout();
 
     private LinearLayout _stage1Card;
     private View _stage3Card;
@@ -88,6 +86,7 @@ public class AdPopup
     {
         _config = config;
         _bundleId = config.bundleId;
+        _layout.updateFromConfig(config);
         _rootLayout.setClipChildren(false);
         buildStage1Card(config);
 
@@ -96,7 +95,7 @@ public class AdPopup
         // Use rootLayout height as the initial off-screen position — guaranteed beyond the
         // visible area on any device, avoiding a one-frame flash at an arbitrary 200dp offset.
         _stage1Card.setTranslationY(_rootLayout.getHeight() > 0
-                ? _rootLayout.getHeight() : dpToPx(1000));
+                ? _rootLayout.getHeight() : dpToPx(_layout.offscreenFallbackDp));
         _stage1Card.setVisibility(View.INVISIBLE);
     }
 
@@ -139,7 +138,7 @@ public class AdPopup
             case PEEK:
                 // Guard: if the card is still animating in, ignore the tap so the user
                 // actually sees the popup before the store opens.
-                if (System.currentTimeMillis() - _peekTimeMs < ANIM_DURATION_MS)
+                if (System.currentTimeMillis() - _peekTimeMs < _layout.slideInDurationMs)
                     break;
                 // Video tap while Stage 1 visible → same outcome as GET button
                 if (!_isAdClicked)
@@ -182,8 +181,8 @@ public class AdPopup
     {
         _cardBottomInset = bottomInset;
         _cardRightInset  = rightInset;
-        int bottom = bottomInset + dpToPx(24);
-        int right  = rightInset  + dpToPx(24);
+        int bottom = bottomInset + dpToPx(_layout.cardEdgeMarginDp);
+        int right  = rightInset  + dpToPx(_layout.cardEdgeMarginDp);
         if (_stage1Card != null)
         {
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) _stage1Card.getLayoutParams();
@@ -249,23 +248,21 @@ public class AdPopup
         LinearLayout card = new LinearLayout(_activity);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL | Gravity.CENTER_HORIZONTAL);
-        card.setPadding(dpToPx(10), dpToPx(12), dpToPx(10), dpToPx(12));
+        card.setPadding(dpToPx(_layout.cardPaddingHorizontalDp), dpToPx(_layout.cardPaddingVerticalDp),
+                dpToPx(_layout.cardPaddingHorizontalDp), dpToPx(_layout.cardPaddingVerticalDp));
         card.setClipChildren(false);
         card.setClipToPadding(false);
 
-        GradientDrawable cardBg = new GradientDrawable();
-        try { cardBg.setColor(Color.parseColor(_config != null ? _config.cardBackgroundColor : "#80000000")); }
-        catch (IllegalArgumentException e) { cardBg.setColor(Color.parseColor("#80000000")); }
-        cardBg.setCornerRadius(dpToPx(_config != null ? _config.cardCornerRadiusDp : 100));
         if (_config == null || !_config.disablePopupBackground)
-            card.setBackground(cardBg);
+            card.setBackground(AdVisualsHelper.makeCardBackground(
+                    _config, dpToPx(_layout.cardCornerRadiusDp)));
         else
             card.setBackground(null);
 
         FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
-        cardLp.rightMargin  = _cardRightInset  + dpToPx(24);
-        cardLp.bottomMargin = _cardBottomInset + dpToPx(24);
+        cardLp.rightMargin  = _cardRightInset  + dpToPx(_layout.cardEdgeMarginDp);
+        cardLp.bottomMargin = _cardBottomInset + dpToPx(_layout.cardEdgeMarginDp);
         card.setLayoutParams(cardLp);
 
         buttonOut[0] = addGetButton(card, onGetClick);
@@ -274,34 +271,21 @@ public class AdPopup
 
     private TextView addGetButton(LinearLayout parent, Runnable onClick)
     {
-        GradientDrawable bg = new GradientDrawable();
-        try { bg.setColor(Color.parseColor(_config != null ? _config.getButtonColor : "#4CAF50")); }
-        catch (IllegalArgumentException e) { bg.setColor(Color.parseColor("#4CAF50")); }
-        bg.setCornerRadius(dpToPx(_config != null ? _config.getButtonCornerRadiusDp : 100));
-
         TextView getBtn = new TextView(_activity);
         getBtn.setText(_config != null ? _config.getButtonText : "GET");
-        int textColor = Color.WHITE;
-        if (_config != null && !_config.getButtonTextColor.isEmpty())
-        {
-            try { textColor = Color.parseColor(_config.getButtonTextColor); }
-            catch (IllegalArgumentException ignored) {}
-        }
-        getBtn.setTextColor(textColor);
-        getBtn.setTextSize(_config != null ? _config.getButtonTextSizeSp : 14);
+        getBtn.setTextColor(AdVisualsHelper.parseButtonTextColor(_config));
+        getBtn.setTextSize(_layout.buttonTextSizeSp);
         getBtn.setTypeface(Typeface.DEFAULT_BOLD);
         getBtn.setGravity(Gravity.CENTER);
-        getBtn.setBackground(bg);
+        getBtn.setBackground(AdVisualsHelper.makeButtonBackground(
+                _config, dpToPx(_layout.buttonCornerRadiusDp)));
 
-        // If width not set (-1), use 165dp default. If height not set (-1), use WRAP_CONTENT + vertical padding.
-        // If explicitly set (> 0), use fixed dp and no padding (text centers via Gravity.CENTER).
-        boolean autoWidth  = _config == null || _config.getButtonWidthDp  <= 0;
-        boolean autoHeight = _config == null || _config.getButtonHeightDp <= 0;
-        int buttonWidth  = autoWidth  ? dpToPx(165) : dpToPx(_config.getButtonWidthDp);
-        int buttonHeight = autoHeight ? LinearLayout.LayoutParams.WRAP_CONTENT : dpToPx(_config.getButtonHeightDp);
-        int padH = 0;
-        int padV = autoHeight ? dpToPx(10) : 0;
-        getBtn.setPadding(padH, padV, padH, padV);
+        int buttonWidth  = dpToPx(_layout.buttonWidthDp);
+        int buttonHeight = _layout.buttonHeightDp > 0
+                ? dpToPx(_layout.buttonHeightDp)
+                : LinearLayout.LayoutParams.WRAP_CONTENT;
+        int padV = _layout.buttonHeightDp <= 0 ? dpToPx(_layout.buttonPaddingVerticalDp) : 0;
+        getBtn.setPadding(0, padV, 0, padV);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 buttonWidth,
@@ -364,10 +348,10 @@ public class AdPopup
         // Slide Stage 1 card off-screen if still visible
         if (_stage1Card != null && _stage1Card.getVisibility() == View.VISIBLE)
         {
-            float cardOffscreen = Math.max(_stage1Card.getHeight(), dpToPx(100)) + dpToPx(24);
+            float cardOffscreen = Math.max(_stage1Card.getHeight(), dpToPx(_layout.slideOutMinHeightDp)) + dpToPx(_layout.cardEdgeMarginDp);
             _stage1Card.animate()
                     .translationY(cardOffscreen)
-                    .setDuration(200)
+                    .setDuration(_layout.slideOutDurationMs)
                     .withEndAction(() -> _stage1Card.setVisibility(View.GONE))
                     .start();
         }
@@ -469,12 +453,12 @@ public class AdPopup
         _stage3Card.post(() ->
         {
             float startY = _stage3Card.getHeight() > 0
-                    ? _stage3Card.getHeight() + dpToPx(24)
-                    : dpToPx(200);
+                    ? _stage3Card.getHeight() + dpToPx(_layout.cardEdgeMarginDp)
+                    : dpToPx(_layout.slideInFallbackDp);
             _stage3Card.setTranslationY(startY);
             _stage3Card.animate()
                     .translationY(0f)
-                    .setDuration(ANIM_DURATION_MS)
+                    .setDuration(_layout.slideInDurationMs)
                     .setInterpolator(new DecelerateInterpolator())
                     .start();
         });
@@ -488,16 +472,16 @@ public class AdPopup
     {
         AccelerateDecelerateInterpolator interp = new AccelerateDecelerateInterpolator();
 
-        ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1.0f, 1.05f);
+        ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1.0f, _layout.pulseScale);
         scaleX.setRepeatMode(ObjectAnimator.REVERSE);
         scaleX.setRepeatCount(ObjectAnimator.INFINITE);
-        scaleX.setDuration(600);
+        scaleX.setDuration(_layout.pulseDurationMs);
         scaleX.setInterpolator(interp);
 
-        ObjectAnimator scaleY = ObjectAnimator.ofFloat(target, "scaleY", 1.0f, 1.05f);
+        ObjectAnimator scaleY = ObjectAnimator.ofFloat(target, "scaleY", 1.0f, _layout.pulseScale);
         scaleY.setRepeatMode(ObjectAnimator.REVERSE);
         scaleY.setRepeatCount(ObjectAnimator.INFINITE);
-        scaleY.setDuration(600);
+        scaleY.setDuration(_layout.pulseDurationMs);
         scaleY.setInterpolator(interp);
 
         AnimatorSet set = new AnimatorSet();
@@ -511,11 +495,11 @@ public class AdPopup
         if (_stage3Card == null) return;
         _stage3Card.setPivotX(_stage3Card.getWidth());
         _stage3Card.setPivotY(_stage3Card.getHeight());
-        ObjectAnimator scaleX = ObjectAnimator.ofFloat(_stage3Card, "scaleX", 1f, 1.04f, 1f);
-        ObjectAnimator scaleY = ObjectAnimator.ofFloat(_stage3Card, "scaleY", 1f, 1.04f, 1f);
+        ObjectAnimator scaleX = ObjectAnimator.ofFloat(_stage3Card, "scaleX", 1f, _layout.tapPulseScale, 1f);
+        ObjectAnimator scaleY = ObjectAnimator.ofFloat(_stage3Card, "scaleY", 1f, _layout.tapPulseScale, 1f);
         AnimatorSet pulse = new AnimatorSet();
         pulse.playTogether(scaleX, scaleY);
-        pulse.setDuration(350);
+        pulse.setDuration(_layout.tapPulseDurationMs);
         pulse.setInterpolator(new DecelerateInterpolator());
         pulse.start();
     }
@@ -534,13 +518,13 @@ public class AdPopup
         // No flash risk: setTranslationY is called before setVisibility(VISIBLE).
         float cardH = _stage1Card.getMeasuredHeight() > 0
                 ? _stage1Card.getMeasuredHeight()
-                : dpToPx(60); // safe fallback if not yet measured
-        float startY = cardH + dpToPx(24);
+                : dpToPx(_layout.cardHeightFallbackDp);
+        float startY = cardH + dpToPx(_layout.cardEdgeMarginDp);
         _stage1Card.setTranslationY(startY);
         _stage1Card.setVisibility(View.VISIBLE);
         _stage1Card.animate()
                 .translationY(0f)
-                .setDuration(ANIM_DURATION_MS)
+                .setDuration(_layout.slideInDurationMs)
                 .setInterpolator(new DecelerateInterpolator())
                 .start();
         // Start pulse countdown from the moment the card is visible

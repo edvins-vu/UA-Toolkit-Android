@@ -20,6 +20,8 @@ import com.ua.toolkit.display.AdUIManager;
 import com.ua.toolkit.display.AdVideoPlayer;
 import com.ua.toolkit.popup.AdPopup;
 
+import com.ua.toolkit.display.AdUIManager;
+
 import java.lang.ref.WeakReference;
 
 public class AdActivity extends Activity implements
@@ -45,6 +47,11 @@ public class AdActivity extends Activity implements
     private boolean adStartedFired = false;
     private int savedVideoPosition = 0;
     private OnBackInvokedCallback backCallback; // API 33+
+
+    // Flow B
+    private boolean hasVisitedStore   = false;
+    private boolean transitionPending = false; // guards against double-posting the 1500ms delay
+    private final Handler flowBHandler = new Handler(Looper.getMainLooper());
 
     private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
     private final Runnable prepareTimeoutRunnable = () -> {
@@ -86,6 +93,7 @@ public class AdActivity extends Activity implements
             isFullyWatched    = savedInstanceState.getBoolean("isFullyWatched", false);
             closeButtonEarned = savedInstanceState.getBoolean("closeButtonEarned", false);
             savedVideoPosition = savedInstanceState.getInt("videoPosition", 0);
+            hasVisitedStore   = savedInstanceState.getBoolean("hasVisitedStore", false);
             Log.d(TAG, "onCreate: state restored — isFullyWatched=" + isFullyWatched
                     + " closeButtonEarned=" + closeButtonEarned
                     + " videoPosition=" + savedVideoPosition);
@@ -103,6 +111,7 @@ public class AdActivity extends Activity implements
         // Reapply earned UI state after manager setup (restoration path)
         if (isFullyWatched)        { uiManager.showRewardEarned(); uiManager.showCloseButton(); }
         else if (closeButtonEarned) { uiManager.showCloseButton(); }
+        if (config.isFlowB && savedInstanceState != null) evaluateFlowBState();
 
         overridePendingTransition(R.anim.slide_in_bottom, 0);
         registerBackCallback();
@@ -140,6 +149,7 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("VIDEO_PATH"),
                 getIntent().getStringExtra("CLICK_URL"),
                 getIntent().getBooleanExtra("IS_REWARDED", false),
+                getIntent().getBooleanExtra("IS_FLOW_B", false),
                 getIntent().getStringExtra("BUNDLE_ID"),
 
                 // Timing
@@ -184,6 +194,7 @@ public class AdActivity extends Activity implements
         uiManager.setDisableRewardCountdown(config.disableRewardCountdown);
         uiManager.setRewardTextSizeSp(config.rewardTextSizeSp);
         uiManager.setRewardTextColor(config.rewardTextColor);
+        uiManager.setFlowB(config.isFlowB);
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new AdAudioManager(this);
@@ -240,6 +251,8 @@ public class AdActivity extends Activity implements
             @Override
             public void onCollapsed()
             {
+                hasVisitedStore = true;
+                if (config.isFlowB) evaluateFlowBState();
                 Log.d(TAG, "popup.onCollapsed — resumingFromPlayOverlay=" + resumingFromPlayOverlay + " closeButtonEarned=" + closeButtonEarned);
                 if (!resumingFromPlayOverlay)
                 {
@@ -296,9 +309,23 @@ public class AdActivity extends Activity implements
     }
 
     @Override public void onCloseClicked() {
+        if (config.isFlowB) {
+            handleFlowBCornerButtonTap();
+            return;
+        }
         boolean success = config.isRewarded ? isFullyWatched : true;
         Log.d(TAG, "onCloseClicked — isRewarded=" + config.isRewarded + " isFullyWatched=" + isFullyWatched + " success=" + success);
         finishWithResult(success);
+    }
+
+    private void handleFlowBCornerButtonTap() {
+        AdUIManager.CornerButtonState state = uiManager.getCornerButtonState();
+        if (state == AdUIManager.CornerButtonState.OPEN_STORE) {
+            if (popup != null) popup.openStore();
+        } else if (state == AdUIManager.CornerButtonState.CLOSE) {
+            finishWithResult(true); // reward always granted in Flow B close
+        }
+        // FINISH_VIDEO state: button is disabled — tap should not reach here
     }
     @Override public void onMuteClicked() {
         audioManager.toggleMute();
@@ -322,8 +349,9 @@ public class AdActivity extends Activity implements
             isFullyWatched = true;
             timerManager.markRewardEarned();
             uiManager.showRewardEarned();
-            uiManager.showCloseButton();
+            uiManager.showCloseButton(); // no-op in Flow B (guarded)
         }
+        if (config.isFlowB) evaluateFlowBState();
     }
 
     @Override public void onVideoError(int what, int extra) {
@@ -347,11 +375,28 @@ public class AdActivity extends Activity implements
     {
         Log.d(TAG, "onCountdownComplete — close button earned, popupExpanded=" + (popup != null && popup.isExpanded()));
         closeButtonEarned = true;
+        if (config.isFlowB) return; // Flow B ignores countdown-based close
         if (popup == null || !popup.isExpanded()) uiManager.showCloseButton();
     }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
 
+    private void evaluateFlowBState() {
+        if (!config.isFlowB) return;
+
+        if (isFullyWatched && hasVisitedStore) {
+            if (!transitionPending) {
+                transitionPending = true;
+                flowBHandler.postDelayed(() -> {
+                    transitionPending = false;
+                    uiManager.transitionCornerButtonToClose(300); // flowBFadeDurationMs
+                }, 1500); // flowBTransitionDelayMs
+            }
+        }
+        // Either flag not yet true: stays OPEN_STORE — no change needed
+    }
+
     private void handleBackNavigation() {
+        if (config.isFlowB) return; // back is always blocked in Flow B
         boolean closeVisible = uiManager != null && uiManager.isCloseButtonVisible();
         if (popup != null && popup.handleBackPress()) {
             return;
@@ -436,6 +481,7 @@ public class AdActivity extends Activity implements
         super.onSaveInstanceState(outState);
         outState.putBoolean("isFullyWatched", isFullyWatched);
         outState.putBoolean("closeButtonEarned", closeButtonEarned);
+        outState.putBoolean("hasVisitedStore", hasVisitedStore);
         int pos = videoPlayer != null
                 ? Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition())
                 : 0;
@@ -449,6 +495,7 @@ public class AdActivity extends Activity implements
         super.onDestroy();
         Log.d(TAG, "onDestroy — resultSent=" + resultSent);
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
+        flowBHandler.removeCallbacksAndMessages(null);
         if (!resultSent && callback != null) { callback.onAdFinished(false); callback = null; }
         if (currentInstanceRef != null && currentInstanceRef.get() == this) { currentInstanceRef.clear(); currentInstanceRef = null; }
         if (popup != null) { popup.cancel(); popup = null; }

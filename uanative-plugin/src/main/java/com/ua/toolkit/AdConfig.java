@@ -16,6 +16,7 @@ public class AdConfig
     public final String  videoPath;
     public final String  clickUrl;
     public final boolean isRewarded;
+    public final boolean isFlowB;
     public final String  bundleId;
 
     // Timing
@@ -56,6 +57,7 @@ public class AdConfig
             String  videoPath,
             String  clickUrl,
             boolean isRewarded,
+            boolean isFlowB,
             String  bundleId,
 
             // Timing
@@ -95,6 +97,7 @@ public class AdConfig
         this.videoPath  = videoPath;
         this.clickUrl   = clickUrl  != null ? clickUrl  : "";
         this.isRewarded = isRewarded;
+        this.isFlowB    = isFlowB && isRewarded; // Flow B is only valid for rewarded ads
         this.bundleId   = bundleId  != null ? bundleId  : "";
 
         // Timing

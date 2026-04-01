@@ -3,6 +3,7 @@ package com.ua.toolkit.display;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.util.TypedValue;
 import android.os.Build;
 import android.view.Gravity;
@@ -25,6 +26,8 @@ import com.ua.toolkit.popup.AdVisualsHelper;
  */
 public class AdUIManager
 {
+    public enum CornerButtonState { OPEN_STORE, CLOSE }
+
     public interface Listener
     {
         void onCloseClicked();
@@ -68,6 +71,10 @@ public class AdUIManager
     private boolean      disableSkipButton  = false;
     private final AdUILayout _layout = new AdUILayout();
 
+    // Flow B
+    private boolean           isFlowB           = false;
+    private CornerButtonState cornerButtonState = CornerButtonState.OPEN_STORE;
+
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
     {
@@ -85,6 +92,7 @@ public class AdUIManager
     public void setDisableRewardCountdown(boolean disable)   { this.disableRewardCountdown = disable; }
     public void setRewardTextSizeSp(int sp)                  { this.rewardTextSizeSp = sp; }
     public void setRewardTextColor(String hex)               { this.rewardTextColor = hex; }
+    public void setFlowB(boolean flowB)                      { this.isFlowB = flowB; }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
     {
@@ -247,6 +255,14 @@ public class AdUIManager
         closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(_layout.closeButtonSizeDp), dpToPx(_layout.closeButtonSizeDp), Gravity.CENTER));
         closeButton.setOnClickListener(v -> listener.onCloseClicked());
 
+        if (isFlowB)
+        {
+            // Corner button starts as OPEN_STORE — visible immediately, skip button suppressed
+            closeButton.setText("OPEN STORE");
+            closeButton.setVisibility(View.VISIBLE);
+            skipButton.setVisibility(View.GONE);
+        }
+
         buttonContainer.addView(skipButton);
         buttonContainer.addView(closeButton);
     }
@@ -407,6 +423,7 @@ public class AdUIManager
 
     public void showSkipButton()
     {
+        if (isFlowB) return;
         if (disableSkipButton) return;
         if (skipButton == null || skipButton.getVisibility() == View.VISIBLE) return;
         skipButton.setVisibility(View.VISIBLE);
@@ -414,6 +431,7 @@ public class AdUIManager
 
     public void showCloseButton()
     {
+        if (isFlowB) return;
         if (skipButton != null) {
             skipButton.setPressed(false); // clear pressed/ripple state before hiding
             skipButton.setVisibility(View.INVISIBLE);
@@ -434,6 +452,47 @@ public class AdUIManager
     public boolean isCloseButtonVisible()
     {
         return closeButton != null && closeButton.getVisibility() == View.VISIBLE;
+    }
+
+    // --- Flow B ---
+
+    public void setCornerButtonState(CornerButtonState state)
+    {
+        if (!isFlowB || closeButton == null) return;
+        cornerButtonState = state;
+        switch (state)
+        {
+            case OPEN_STORE:
+                closeButton.setText("OPEN STORE");
+                closeButton.setEnabled(true);
+                closeButton.setAlpha(1.0f);
+                closeButton.setVisibility(View.VISIBLE);
+                break;
+            case CLOSE:
+                closeButton.setText("✕");
+                closeButton.setEnabled(true);
+                closeButton.setAlpha(1.0f);
+                closeButton.setVisibility(View.VISIBLE);
+                break;
+        }
+    }
+
+    public CornerButtonState getCornerButtonState() { return cornerButtonState; }
+
+    public void transitionCornerButtonToClose(int fadeDurationMs)
+    {
+        if (!isFlowB || closeButton == null) return;
+        closeButton.animate()
+            .alpha(0f)
+            .setDuration(fadeDurationMs)
+            .withEndAction(() -> {
+                setCornerButtonState(CornerButtonState.CLOSE);
+                closeButton.animate()
+                    .alpha(1f)
+                    .setDuration(fadeDurationMs)
+                    .start();
+            })
+            .start();
     }
 
     // --- Getters ---

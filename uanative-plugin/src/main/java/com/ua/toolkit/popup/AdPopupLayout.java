@@ -36,6 +36,10 @@ class AdPopupLayout
     final int slideInFallbackDp    = 200;  // stage3 startY when getHeight() returns 0
     final int slideOutMinHeightDp  = 100;  // minimum height used in stage1 slide-off calc
 
+    // --- Flow B transition ---
+    final int flowBTransitionDelayMs = 1500; // delay before CLOSE button appears after both flags are true
+    final int flowBFadeDurationMs    = 300;  // crossfade animation duration for OPEN_STORE → CLOSE transition
+
     /**
      * Overlays AdConfig values for fields that have a remote config counterpart.
      * AdConfig already validates all values so no secondary checks are needed.

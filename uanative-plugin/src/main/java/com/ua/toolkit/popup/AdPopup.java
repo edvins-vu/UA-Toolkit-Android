@@ -120,6 +120,35 @@ public class AdPopup
         return false;
     }
 
+    /**
+     * Programmatically opens the Play Store from any popup state.
+     * Tracks the click (once) and fires the appropriate state transition.
+     * Used by AdActivity in Flow B when the corner "OPEN STORE" button is tapped.
+     */
+    public void openStore()
+    {
+        if (_isCancelled) return;
+        if (!_isAdClicked)
+        {
+            _isAdClicked = true;
+            _listener.onAdClicked();
+        }
+        switch (_state)
+        {
+            case HIDDEN:
+                // Peek first, then open store after slide-in completes
+                peek();
+                _handler.postDelayed(this::launchPlayOverlay, _layout.slideInDurationMs);
+                break;
+            case PEEK:
+            case COLLAPSED:
+                launchPlayOverlay();
+                break;
+            case PLAY_OVERLAY:
+                break; // already open — no-op
+        }
+    }
+
     /** Called by AdActivity when the user taps the video surface. */
     public void handleVideoTap()
     {
@@ -307,7 +336,7 @@ public class AdPopup
 
     // --- Stage 2: Play Store Native Sheet overlay
 
-    private void launchPlayOverlay()
+    void launchPlayOverlay()
     {
         if (_state != State.PEEK && _state != State.COLLAPSED) return;
 

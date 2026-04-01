@@ -4,7 +4,6 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
 import android.util.TypedValue;
-import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
@@ -19,6 +18,7 @@ import android.widget.TextView;
 import android.widget.VideoView;
 
 import com.ua.toolkit.R;
+import com.ua.toolkit.popup.AdVisualsHelper;
 
 /**
  * Manages UI creation and updates for ad display.
@@ -159,7 +159,8 @@ public class AdUIManager
         muteButton.setPadding(pad, pad, pad, pad);
         muteButton.setImageResource(R.drawable.ic_volume_on);
 
-        muteButton.setBackground(createCircleBackground());
+        muteButton.setBackground(AdVisualsHelper.makeCircleBackground(
+                _layout.buttonBgColor, _layout.buttonBorderColor, dpToPx(_layout.buttonBorderWidthDp)));
         clearBackgroundTint(muteButton);
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dpToPx(_layout.muteButtonSizeDp), dpToPx(_layout.muteButtonSizeDp), Gravity.TOP | Gravity.START);
@@ -178,11 +179,11 @@ public class AdUIManager
     private void createTimerText()
     {
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor(_layout.timerBackgroundColor));
+        bg.setColor(AdVisualsHelper.parseColor(_layout.timerBackgroundColor, Color.BLACK));
         bg.setCornerRadius(dpToPx(_layout.timerCornerRadiusDp));
 
         timerText = new TextView(activity);
-        timerText.setTextColor(Color.parseColor(rewardTextColor));
+        timerText.setTextColor(AdVisualsHelper.parseColor(rewardTextColor, Color.WHITE));
         timerText.setTextSize(rewardTextSizeSp);
         timerText.setPadding(dpToPx(_layout.timerPaddingHorizontalDp), dpToPx(_layout.timerPaddingVerticalDp),
                 dpToPx(_layout.timerPaddingHorizontalDp), dpToPx(_layout.timerPaddingVerticalDp));
@@ -235,7 +236,9 @@ public class AdUIManager
         closeButton.setGravity(Gravity.CENTER);
         closeButton.setIncludeFontPadding(false);
         closeButton.setVisibility(View.GONE);
-        closeButton.setBackground(createRoundedBackground(dpToPx(_layout.closeButtonCornerRadiusDp)));
+        closeButton.setBackground(AdVisualsHelper.makeRoundedBackground(
+                _layout.buttonBgColor, _layout.buttonBorderColor,
+                dpToPx(_layout.closeButtonCornerRadiusDp), dpToPx(_layout.buttonBorderWidthDp)));
         closeButton.setPadding(0, 0, 0, 0);
         closeButton.setMinHeight(0);
         closeButton.setMinimumHeight(0);
@@ -446,32 +449,6 @@ public class AdUIManager
     }
 
     // --- Helpers ---
-
-    /** Circle background for the mute button — OVAL shape, same iOS-matching colour and border. */
-    private GradientDrawable createCircleBackground()
-    {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(_layout.buttonBgColor);
-        bg.setStroke(dpToPx(_layout.buttonBorderWidthDp), _layout.buttonBorderColor);
-        return bg;
-    }
-
-    /**
-     * Rounded-rectangle background matching iOS UAAdViewController button style:
-     *   backgroundColor = colorWithWhite:0.15 alpha:0.75  →  argb(191, 38, 38, 38)
-     *   borderWidth = 0.5 / borderColor = white alpha:0.2 →  argb(51, 255, 255, 255)
-     * Applied consistently to mute, skip, and close buttons for visual parity with iOS.
-     */
-    private GradientDrawable createRoundedBackground(int cornerRadius)
-    {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.RECTANGLE);
-        bg.setCornerRadius(cornerRadius);
-        bg.setColor(_layout.buttonBgColor);
-        bg.setStroke(dpToPx(_layout.buttonBorderWidthDp), _layout.buttonBorderColor);
-        return bg;
-    }
 
     private void clearBackgroundTint(View view)
     {

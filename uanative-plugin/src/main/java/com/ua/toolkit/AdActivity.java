@@ -245,7 +245,7 @@ public class AdActivity extends Activity implements
                 Log.d(TAG, "popup.onExpanded — pausing video and timer, hiding close button");
                 if (videoPlayer != null) videoPlayer.pause();
                 if (timerManager != null) timerManager.pause();
-                uiManager.hideCloseButton();
+                if (!config.isFlowB) uiManager.hideCloseButton(); // Flow B: corner button stays visible (covered by store sheet)
             }
 
             @Override

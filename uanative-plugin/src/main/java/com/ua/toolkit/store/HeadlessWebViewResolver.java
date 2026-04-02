@@ -321,9 +321,11 @@ public class HeadlessWebViewResolver
 
         Log.d(TAG, "Resolution successful: " + storeInfo);
 
-        if (callback != null)
+        ResolverCallback cb = callback;
+        callback = null;
+        if (cb != null)
         {
-            mainHandler.post(() -> callback.onStoreFound(storeInfo));
+            mainHandler.post(() -> cb.onStoreFound(storeInfo));
         }
     }
 
@@ -337,9 +339,11 @@ public class HeadlessWebViewResolver
 
         Log.e(TAG, "Resolution failed: " + reason);
 
-        if (callback != null)
+        ResolverCallback cb = callback;
+        callback = null;
+        if (cb != null)
         {
-            mainHandler.post(() -> callback.onFailed(reason));
+            mainHandler.post(() -> cb.onFailed(reason));
         }
     }
 

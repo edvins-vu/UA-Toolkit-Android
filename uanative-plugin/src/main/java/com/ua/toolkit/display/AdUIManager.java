@@ -57,6 +57,7 @@ public class AdUIManager
     private TextView timerText;
     private TextView skipButton;
     private TextView closeButton;
+    private TextView openStoreButton;
     private FrameLayout buttonContainer;
 
     // Insets
@@ -72,8 +73,9 @@ public class AdUIManager
     private final AdUILayout _layout = new AdUILayout();
 
     // Flow B
-    private boolean           isFlowB           = false;
-    private CornerButtonState cornerButtonState = CornerButtonState.OPEN_STORE;
+    private boolean           isFlowB             = false;
+    private CornerButtonState cornerButtonState   = CornerButtonState.OPEN_STORE;
+    private String            openStoreButtonText = "OPEN STORE";
 
     public AdUIManager(Activity activity, Listener listener, boolean isRewarded,
                        String rewardCountdownText, String rewardEarnedText)
@@ -93,6 +95,7 @@ public class AdUIManager
     public void setRewardTextSizeSp(int sp)                  { this.rewardTextSizeSp = sp; }
     public void setRewardTextColor(String hex)               { this.rewardTextColor = hex; }
     public void setFlowB(boolean flowB)                      { this.isFlowB = flowB; }
+    public void setOpenStoreButtonText(String text)           { if (text != null && !text.isEmpty()) this.openStoreButtonText = text; }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
     {
@@ -210,14 +213,18 @@ public class AdUIManager
     private void createButtonContainer()
     {
         buttonContainer = new FrameLayout(activity);
-        // WRAP_CONTENT so the container expands to accommodate inset padding applied in applyInsets()
+        // Flow B uses WRAP_CONTENT height — the OPEN STORE pill is taller than the fixed close button size.
+        // Standard mode uses the fixed height that fits the square skip/close buttons.
+        int containerHeight = isFlowB
+                ? FrameLayout.LayoutParams.WRAP_CONTENT
+                : dpToPx(_layout.buttonContainerHeightDp);
         FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT, dpToPx(_layout.buttonContainerHeightDp), Gravity.TOP | Gravity.END);
+                FrameLayout.LayoutParams.WRAP_CONTENT, containerHeight, Gravity.TOP | Gravity.END);
         containerParams.topMargin = dpToPx(_layout.buttonContainerTopMarginDp);
         containerParams.rightMargin = dpToPx(_layout.buttonContainerRightDp); // minimal initial value; zeroed in applyInsets()
         buttonContainer.setLayoutParams(containerParams);
 
-        // Skip button — shown after 3 s; tap immediately reveals close button
+        // Skip button — shown after skipButtonDelay s; tap immediately reveals close button
         skipButton = new TextView(activity);
         skipButton.setText("⏭");
         skipButton.setTextColor(_layout.skipButtonTextColor);
@@ -255,16 +262,36 @@ public class AdUIManager
         closeButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(_layout.closeButtonSizeDp), dpToPx(_layout.closeButtonSizeDp), Gravity.CENTER));
         closeButton.setOnClickListener(v -> listener.onCloseClicked());
 
-        if (isFlowB)
-        {
-            // Corner button starts as OPEN_STORE — visible immediately, skip button suppressed
-            closeButton.setText("OPEN STORE");
-            closeButton.setVisibility(View.VISIBLE);
-            skipButton.setVisibility(View.GONE);
-        }
-
         buttonContainer.addView(skipButton);
         buttonContainer.addView(closeButton);
+
+        if (isFlowB)
+        {
+            // Flow B: dedicated OPEN STORE pill button — properly sized, skip symbol prefix for UX clarity.
+            // closeButton stays GONE until the transition fires; skip button is suppressed entirely.
+            openStoreButton = new TextView(activity);
+            openStoreButton.setText("⏭  " + openStoreButtonText);
+            openStoreButton.setTextColor(Color.WHITE);
+            openStoreButton.setTextSize(_layout.openStoreButtonTextSizeSp);
+            openStoreButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            openStoreButton.setGravity(Gravity.CENTER);
+            openStoreButton.setIncludeFontPadding(false);
+            openStoreButton.setBackground(AdVisualsHelper.makeRoundedBackground(
+                    _layout.buttonBgColor, _layout.buttonBorderColor,
+                    dpToPx(_layout.openStoreButtonCornerRadiusDp), dpToPx(_layout.buttonBorderWidthDp)));
+            openStoreButton.setPadding(
+                    dpToPx(_layout.openStoreButtonPaddingHorizontalDp), dpToPx(_layout.openStoreButtonPaddingVerticalDp),
+                    dpToPx(_layout.openStoreButtonPaddingHorizontalDp), dpToPx(_layout.openStoreButtonPaddingVerticalDp));
+            openStoreButton.setMinHeight(0);
+            openStoreButton.setMinimumHeight(0);
+            openStoreButton.setMinWidth(0);
+            openStoreButton.setMinimumWidth(0);
+            openStoreButton.setLayoutParams(new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+            openStoreButton.setVisibility(View.VISIBLE);
+            openStoreButton.setOnClickListener(v -> listener.onCloseClicked());
+            buttonContainer.addView(openStoreButton);
+        }
     }
 
     private void setupInsetHandling()
@@ -463,12 +490,11 @@ public class AdUIManager
         switch (state)
         {
             case OPEN_STORE:
-                closeButton.setText("OPEN STORE");
-                closeButton.setEnabled(true);
-                closeButton.setAlpha(1.0f);
-                closeButton.setVisibility(View.VISIBLE);
+                if (openStoreButton != null) { openStoreButton.setAlpha(1.0f); openStoreButton.setVisibility(View.VISIBLE); }
+                closeButton.setVisibility(View.GONE);
                 break;
             case CLOSE:
+                if (openStoreButton != null) openStoreButton.setVisibility(View.GONE);
                 closeButton.setText("✕");
                 closeButton.setEnabled(true);
                 closeButton.setAlpha(1.0f);
@@ -481,13 +507,18 @@ public class AdUIManager
 
     public void transitionCornerButtonToClose(int fadeDurationMs)
     {
-        if (!isFlowB || closeButton == null) return;
-        closeButton.animate()
+        if (!isFlowB || closeButton == null || openStoreButton == null) return;
+        openStoreButton.animate()
             .alpha(0f)
             .setDuration(fadeDurationMs)
             .withEndAction(() -> {
                 if (activity.isFinishing()) return;
-                setCornerButtonState(CornerButtonState.CLOSE);
+                openStoreButton.setVisibility(View.GONE);
+                closeButton.setAlpha(0f);
+                closeButton.setText("✕");
+                closeButton.setEnabled(true);
+                closeButton.setVisibility(View.VISIBLE);
+                cornerButtonState = CornerButtonState.CLOSE;
                 closeButton.animate()
                     .alpha(1f)
                     .setDuration(fadeDurationMs)

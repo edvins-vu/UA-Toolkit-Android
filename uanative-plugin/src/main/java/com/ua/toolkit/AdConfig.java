@@ -50,6 +50,7 @@ public class AdConfig
     public final boolean disableRewardCountdown;
     public final int     rewardTextSizeSp;
     public final String  rewardTextColor;
+    public final String  openStoreButtonText;
 
 
     public AdConfig(
@@ -90,7 +91,8 @@ public class AdConfig
             String  rewardEarnedText,
             boolean disableRewardCountdown,
             int     rewardTextSizeSp,
-            String  rewardTextColor
+            String  rewardTextColor,
+            String  openStoreButtonText
     )
     {
         // Core
@@ -132,6 +134,7 @@ public class AdConfig
         this.disableRewardCountdown = disableRewardCountdown;
         this.rewardTextSizeSp       = (rewardTextSizeSp >= 10 && rewardTextSizeSp <= 40) ? rewardTextSizeSp : 14;
         this.rewardTextColor        = validateHex(rewardTextColor, "#FFFFFF");
+        this.openStoreButtonText    = nonEmpty(openStoreButtonText, "OPEN STORE");
     }
 
     private static String nonEmpty(String value, String fallback)

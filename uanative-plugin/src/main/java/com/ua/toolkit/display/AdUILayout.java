@@ -42,6 +42,12 @@ class AdUILayout
     float buttonBorderWidthDp = 0.75f;
     int   buttonBorderColor   = Color.argb(51, 255, 255, 255);
 
+    // --- Flow B: OPEN STORE button (separate pill, replaces close button in corner) ---
+    int openStoreButtonTextSizeSp          = 12;
+    int openStoreButtonPaddingHorizontalDp = 10;
+    int openStoreButtonPaddingVerticalDp   = 5;
+    int openStoreButtonCornerRadiusDp      = 100;
+
     // --- Inset handling ---
     int minTopInsetDp = 8;  // Math.max floor applied to savedTopInset in applyInsets()
 }

@@ -182,7 +182,8 @@ public class AdActivity extends Activity implements
                 getIntent().getStringExtra("REWARD_EARNED_TEXT"),
                 getIntent().getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
                 getIntent().getIntExtra("REWARD_TEXT_SIZE_SP", -1),
-                getIntent().getStringExtra("REWARD_TEXT_COLOR")
+                getIntent().getStringExtra("REWARD_TEXT_COLOR"),
+                getIntent().getStringExtra("OPEN_STORE_BUTTON_TEXT")
         );
     }
 
@@ -195,6 +196,7 @@ public class AdActivity extends Activity implements
         uiManager.setRewardTextSizeSp(config.rewardTextSizeSp);
         uiManager.setRewardTextColor(config.rewardTextColor);
         uiManager.setFlowB(config.isFlowB);
+        uiManager.setOpenStoreButtonText(config.openStoreButtonText);
         uiManager.setupUI();
         uiManager.setupFullscreen();
         audioManager = new AdAudioManager(this);

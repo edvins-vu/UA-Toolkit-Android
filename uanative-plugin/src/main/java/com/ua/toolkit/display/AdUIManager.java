@@ -508,6 +508,7 @@ public class AdUIManager
     public void transitionCornerButtonToClose(int fadeDurationMs)
     {
         if (!isFlowB || closeButton == null || openStoreButton == null) return;
+        openStoreButton.setEnabled(false); // block taps immediately — button stays visible during fade
         openStoreButton.animate()
             .alpha(0f)
             .setDuration(fadeDurationMs)

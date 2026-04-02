@@ -62,6 +62,7 @@ public class AdPopup
     private TextView _stage3GetButton;
     private Animator _stage1PulseAnimator;
     private Animator _stage3PulseAnimator;
+    private Animator _stage3TapPulseAnimator;
     private Runnable _stage1PulseRunnable;
     private Runnable _stage3PulseRunnable;
     private Runnable _scheduledPeekRunnable;
@@ -234,8 +235,9 @@ public class AdPopup
         _isCancelled = true;
         UAStoreLauncher.cancel(); // stop any in-progress fallback store resolution
         _handler.removeCallbacksAndMessages(null);
-        if (_stage1PulseAnimator != null) { _stage1PulseAnimator.cancel(); _stage1PulseAnimator = null; }
-        if (_stage3PulseAnimator != null) { _stage3PulseAnimator.cancel(); _stage3PulseAnimator = null; }
+        if (_stage1PulseAnimator != null)    { _stage1PulseAnimator.cancel();    _stage1PulseAnimator    = null; }
+        if (_stage3PulseAnimator != null)    { _stage3PulseAnimator.cancel();    _stage3PulseAnimator    = null; }
+        if (_stage3TapPulseAnimator != null) { _stage3TapPulseAnimator.cancel(); _stage3TapPulseAnimator = null; }
         if (_stage1GetButton != null) { _stage1GetButton.setScaleX(1f); _stage1GetButton.setScaleY(1f); }
         if (_stage3GetButton != null) { _stage3GetButton.setScaleX(1f); _stage3GetButton.setScaleY(1f); }
         _stage1PulseRunnable = null;
@@ -522,6 +524,12 @@ public class AdPopup
     private void pulsateStage3Card()
     {
         if (_stage3Card == null) return;
+        if (_stage3TapPulseAnimator != null) {
+            _stage3TapPulseAnimator.cancel();
+            _stage3TapPulseAnimator = null;
+            _stage3Card.setScaleX(1f);
+            _stage3Card.setScaleY(1f);
+        }
         _stage3Card.setPivotX(_stage3Card.getWidth());
         _stage3Card.setPivotY(_stage3Card.getHeight());
         ObjectAnimator scaleX = ObjectAnimator.ofFloat(_stage3Card, "scaleX", 1f, _layout.tapPulseScale, 1f);
@@ -530,6 +538,7 @@ public class AdPopup
         pulse.playTogether(scaleX, scaleY);
         pulse.setDuration(_layout.tapPulseDurationMs);
         pulse.setInterpolator(new DecelerateInterpolator());
+        _stage3TapPulseAnimator = pulse;
         pulse.start();
     }
 

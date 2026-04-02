@@ -102,13 +102,14 @@ public class HeadlessWebViewResolver
             try
             {
                 createAndLoadWebView(url);
-                startTimeout();
             }
             catch (Exception e)
             {
                 Log.e(TAG, "Error creating WebView: " + e.getMessage(), e);
                 notifyFailed("WebView creation failed: " + e.getMessage());
+                return;
             }
+            startTimeout(); // always reached if createAndLoadWebView succeeded
         });
     }
 

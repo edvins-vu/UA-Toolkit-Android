@@ -486,6 +486,7 @@ public class AdUIManager
             .alpha(0f)
             .setDuration(fadeDurationMs)
             .withEndAction(() -> {
+                if (activity.isFinishing()) return;
                 setCornerButtonState(CornerButtonState.CLOSE);
                 closeButton.animate()
                     .alpha(1f)

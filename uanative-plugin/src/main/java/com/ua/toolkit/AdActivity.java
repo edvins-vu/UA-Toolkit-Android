@@ -298,6 +298,7 @@ public class AdActivity extends Activity implements
         resultSent = true;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
+        flowBHandler.removeCallbacksAndMessages(null);
         unregisterBackCallback();
         if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();

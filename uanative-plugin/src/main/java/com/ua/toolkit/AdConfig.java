@@ -7,8 +7,10 @@ import java.io.File;
 /**
  * Configuration data for ad display.
  * Dimension fields (width/height) use -1 to mean "not set" — AdPopup renders WRAP_CONTENT.
- * Text size and corner radius fall back to hardcoded defaults when invalid.
+ * Text sizes and corner radii are clamped to sane ranges; fall back to hardcoded defaults.
+ * Timing delays are clamped to [0, max] ranges; fall back to hardcoded defaults.
  * Color strings are hex-validated; malformed values fall back to hardcoded defaults.
+ * Text strings are length-capped; strings exceeding the cap fall back to hardcoded defaults.
  */
 public class AdConfig
 {
@@ -103,24 +105,24 @@ public class AdConfig
         this.bundleId   = bundleId  != null ? bundleId  : "";
 
         // Timing
-        this.closeButtonDelay   = closeButtonDelay >= 0   ? closeButtonDelay   : 5;
-        this.peekDelay          = peekDelay          >= 0 ? peekDelay          : 5;
-        this.skipButtonDelaySec = skipButtonDelaySec >= 0 ? skipButtonDelaySec : 3;
-        this.pulseStartDelaySec = pulseStartDelaySec >= 0 ? pulseStartDelaySec : 5;
+        this.closeButtonDelay   = (closeButtonDelay   >= 0 && closeButtonDelay   <= 120) ? closeButtonDelay   : 5;
+        this.peekDelay          = (peekDelay          >= 0 && peekDelay          <= 60)  ? peekDelay          : 5;
+        this.skipButtonDelaySec = (skipButtonDelaySec >= 0 && skipButtonDelaySec <= 60)  ? skipButtonDelaySec : 3;
+        this.pulseStartDelaySec = (pulseStartDelaySec >= 0 && pulseStartDelaySec <= 120) ? pulseStartDelaySec : 5;
 
         // GET button — apply fallbacks
-        // Width/height: -1 = not set (AdPopup uses WRAP_CONTENT); reject implausibly small positives
-        this.getButtonText           = nonEmpty(getButtonText, "GET");
+        // Width/height: -1 = not set (AdPopup uses WRAP_CONTENT); reject implausibly small or large values
+        this.getButtonText           = clampedString(getButtonText, "GET", 30);
         this.getButtonColor          = validateHex(getButtonColor,     "#4CAF50");
         this.getButtonTextColor      = validateHex(getButtonTextColor, "#FFFFFF");
-        this.getButtonWidthDp        = (getButtonWidthDp  == -1 || getButtonWidthDp  >= 40) ? getButtonWidthDp  : -1;
-        this.getButtonHeightDp       = (getButtonHeightDp == -1 || getButtonHeightDp >= 20) ? getButtonHeightDp : -1;
+        this.getButtonWidthDp        = (getButtonWidthDp  == -1 || (getButtonWidthDp  >= 40  && getButtonWidthDp  <= 500)) ? getButtonWidthDp  : -1;
+        this.getButtonHeightDp       = (getButtonHeightDp == -1 || (getButtonHeightDp >= 20  && getButtonHeightDp <= 200)) ? getButtonHeightDp : -1;
         this.getButtonTextSizeSp     = (getButtonTextSizeSp >= 10 && getButtonTextSizeSp <= 40) ? getButtonTextSizeSp : 14;
-        this.getButtonCornerRadiusDp = getButtonCornerRadiusDp >= 0 ? getButtonCornerRadiusDp : 100;
+        this.getButtonCornerRadiusDp = (getButtonCornerRadiusDp >= 0 && getButtonCornerRadiusDp <= 200) ? getButtonCornerRadiusDp : 100;
 
         // Popup card — apply fallbacks
         this.cardBackgroundColor = validateHex(cardBackgroundColor, "#80000000");
-        this.cardCornerRadiusDp  = cardCornerRadiusDp >= 0 ? cardCornerRadiusDp : 100;
+        this.cardCornerRadiusDp  = (cardCornerRadiusDp >= 0 && cardCornerRadiusDp <= 200) ? cardCornerRadiusDp : 100;
 
         // Controls
         this.disableMuteButton      = disableMuteButton;
@@ -129,17 +131,18 @@ public class AdConfig
         this.disablePopupBackground = disablePopupBackground;
 
         // Reward texts
-        this.rewardCountdownText    = nonEmpty(rewardCountdownText, "Reward in: %ds");
-        this.rewardEarnedText       = nonEmpty(rewardEarnedText,    "Reward earned!");
+        this.rewardCountdownText    = clampedString(rewardCountdownText, "Reward in: %ds", 60);
+        this.rewardEarnedText       = clampedString(rewardEarnedText,    "Reward earned!", 60);
         this.disableRewardCountdown = disableRewardCountdown;
         this.rewardTextSizeSp       = (rewardTextSizeSp >= 10 && rewardTextSizeSp <= 40) ? rewardTextSizeSp : 14;
         this.rewardTextColor        = validateHex(rewardTextColor, "#FFFFFF");
-        this.openStoreButtonText    = nonEmpty(openStoreButtonText, "OPEN STORE");
+        this.openStoreButtonText    = clampedString(openStoreButtonText, "OPEN STORE", 30);
     }
 
-    private static String nonEmpty(String value, String fallback)
+    private static String clampedString(String value, String fallback, int maxLen)
     {
-        return (value != null && !value.isEmpty()) ? value : fallback;
+        if (value == null || value.isEmpty()) return fallback;
+        return value.length() <= maxLen ? value : fallback;
     }
 
     private static String validateHex(String hex, String fallback)

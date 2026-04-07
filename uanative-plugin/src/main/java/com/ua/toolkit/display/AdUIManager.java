@@ -481,6 +481,11 @@ public class AdUIManager
         return closeButton != null && closeButton.getVisibility() == View.VISIBLE;
     }
 
+    public boolean isSkipButtonVisible()
+    {
+        return skipButton != null && skipButton.getVisibility() == View.VISIBLE;
+    }
+
     // --- Flow B ---
 
     public void setCornerButtonState(CornerButtonState state)

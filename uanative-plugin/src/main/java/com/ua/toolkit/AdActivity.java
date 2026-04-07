@@ -379,7 +379,11 @@ public class AdActivity extends Activity implements
         Log.d(TAG, "onCountdownComplete — close button earned, popupExpanded=" + (popup != null && popup.isExpanded()));
         closeButtonEarned = true;
         if (config.isFlowB) return; // Flow B ignores countdown-based close
-        if (popup == null || !popup.isExpanded()) uiManager.showCloseButton();
+        if (popup == null || !popup.isExpanded()) {
+            // If skip button is already visible the user controls the transition by tapping it.
+            // Only auto-show close when skip never appeared (disabled or skipDelay >= closeDelay).
+            if (!uiManager.isSkipButtonVisible()) uiManager.showCloseButton();
+        }
     }
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
 

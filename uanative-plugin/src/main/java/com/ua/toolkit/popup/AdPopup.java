@@ -549,23 +549,26 @@ public class AdPopup
         Log.d(TAG, "state → PEEK");
         _state = State.PEEK;
         _peekTimeMs = System.currentTimeMillis();
-        // Start the card just one card-height below the screen edge so it enters the visible
-        // area immediately and slides upward for its full height — making the appearance
-        // unmissable. Using rootLayout.getHeight() as startY caused the card to be visible
-        // for only ~110ms at the very end of the 280ms animation, which users couldn't perceive.
-        // No flash risk: setTranslationY is called before setVisibility(VISIBLE).
-        float cardH = _stage1Card.getMeasuredHeight() > 0
-                ? _stage1Card.getMeasuredHeight()
-                : dpToPx(_layout.cardHeightFallbackDp);
-        float startY = cardH + dpToPx(_layout.cardEdgeMarginDp);
-        _stage1Card.setTranslationY(startY);
-        _stage1Card.setVisibility(View.VISIBLE);
-        _stage1Card.animate()
-                .translationY(0f)
-                .setDuration(_layout.slideInDurationMs)
-                .setInterpolator(new DecelerateInterpolator())
-                .start();
-        // Start pulse countdown from the moment the card is visible
+        // INVISIBLE (not GONE) so the layout pass measures the card before the animation starts.
+        // This guarantees getMeasuredHeight() returns the real height inside the post() callback,
+        // so the slide-in always begins exactly one card-height below the final position.
+        _stage1Card.setVisibility(View.INVISIBLE);
+        _stage1Card.post(() -> {
+            if (_isCancelled) return;
+            float cardH = _stage1Card.getMeasuredHeight() > 0
+                    ? _stage1Card.getMeasuredHeight()
+                    : dpToPx(_layout.cardHeightFallbackDp);
+            float startY = cardH + dpToPx(_layout.cardEdgeMarginDp);
+            _stage1Card.setTranslationY(startY);
+            _stage1Card.setVisibility(View.VISIBLE);
+            _stage1Card.animate()
+                    .translationY(0f)
+                    .setDuration(_layout.slideInDurationMs)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
+        });
+        // Start pulse countdown from the moment peek() is called (not inside post — delay is long
+        // enough that the card is always visible before the pulse fires)
         if (_config != null && !_config.disablePulse) {
             long pulseDelayMs = (_config.pulseStartDelaySec > 0 ? _config.pulseStartDelaySec : 5) * 1000L;
             _stage1PulseRunnable = () -> {

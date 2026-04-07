@@ -1,52 +1,82 @@
-This task covers the architectural shift from a static Video Player to a dynamic WebView-based Engine. It ensures that your existing native UI components (the "Frame") are preserved while the "Content" becomes a fully interactive HTML5 environment.
+# iOS Delta Changes
+Changes made to the Android plugin after the iOS implementation plan was written.
+Each entry must be ported to the iOS equivalent files when iOS implementation begins.
 
-Task: [Core-Android] Implement HTML5 Playable Ad Category & WebView Bridge
-Task Name: SDK-ANDROID: Implement Playable Ad Engine with High-Performance WebView and MRAID-Lite Bridge
+---
 
-Description
-Expand the Android SDK to support a new media_type: "playable" category. This involves creating a dedicated PlayableAdActivity that utilizes a hardware-accelerated WebView to host HTML5 games while maintaining the existing Flow B (Action-Gate) logic and native UI overlays.
+## DELTA-01 — Skip button no longer auto-promotes to close button on countdown complete
 
-Technical Requirements
-1. High-Performance WebView Configuration:
+**Android files changed:**
+- `AdUIManager.java` — added `isSkipButtonVisible()` helper
+- `AdActivity.java` — `onCountdownComplete()`: only calls `showCloseButton()` if skip button is not currently visible
 
-Engine: Implement an android.webkit.WebView with hardwareAccelerated="true".
+**Old behavior:** When `closeButtonDelay` elapsed, `showCloseButton()` was always called, hiding the skip button and showing close regardless of whether skip was visible.
 
-Settings: Enable setJavaScriptEnabled(true), setDomStorageEnabled(true), and setDatabaseEnabled(true) to support modern HTML5 game engines (Phaser, Three.js).
+**New behavior:** If the skip button is already visible when countdown completes, leave it — the user taps skip to promote to close. Close only auto-shows when skip never appeared (disabled, or `skipButtonDelaySec >= closeButtonDelay`).
 
-Media: Set setMediaPlaybackRequiresUserGesture(false) to allow the ad to play sound/video without an initial tap.
+**iOS port notes:**
+- Add equivalent of `isSkipButtonVisible()` check in the countdown-complete handler
+- The skip button click handler already calls `showCloseButton()` — no change needed there
+- Applies to non-rewarded flow only (skip is never shown for rewarded ads)
 
-2. Layered UI & Touch-Through Management:
+---
 
-Z-Order: Use a FrameLayout to ensure the WebView stays at the bottom (index 0) while the UAAdPopup native components (Close button, "GET" button, Install Invitation) sit in a transparent layer on top (index 1).
+## DELTA-02 — Playable Ad format (HTML5/WebView renderer inside existing ad flow)
 
-Touch Priority: Ensure the native popup layer does not consume touch events unless a native button is specifically pressed, allowing the user to play the game underneath.
+**Android files changed:**
+- `AdJsBridge.java` — new file, `@JavascriptInterface` bridge; `openStore()` → `activity.handleStoreRedirect()`
+- `AdActivity.java` — `isPlayable` flag from `IS_PLAYABLE` intent extra; WebView renderer branch; `onContentReady()` replaces `onVideoPrepared()` shared startup; `evaluateFlowBState()` uses `closeButtonEarned` for playable; mute injects JS; lifecycle routes to WebView; tap-through disabled for playable; `IS_PLAYABLE` flag from intent
+- AndroidManifest.xml — `hardwareAccelerated="true"` (already present)
 
-3. Playable-Specific "Engagement" Logic:
+**C# files changed:**
+- `PlayableLoadRequest.cs` — new file (HtmlUrl replaces VideoUrl, adds IsRewarded)
+- `ShowPlayableAdRequest.cs` — new file (HtmlPath = local cached file path, IS_PLAYABLE flag to native)
+- `AdUnitState.cs` — added `HtmlUrl` and `IsRewarded` fields; `Reset()` clears HtmlUrl
+- `UANativeBridge.cs` — `ShowPlayableAd()` method targeting same AdActivity with `IS_PLAYABLE=true`; `LaunchAdActivity()` and `PutSharedAdExtras()` private helpers extracted to eliminate duplication with `ShowAd()`
+- `UASDK.cs` — `AdType.Playable`; `_playableStates` dict; Playable events; `LoadPlayable()` async with HTML download; `IsPlayableReady()`; `ShowPlayable()`; all internal handlers extended for playable path
 
-Disable Tap-to-Redirect: Unlike Video ads, tapping the background must not trigger the store; it must pass the touch to the game.
+**Key behavioral differences from video ads:**
+- No reward countdown text, no "Reward earned!" overlay (AdTimerManager init'd with isRewarded=false)
+- Reward condition = closeButtonDelay elapsed (not video completed)
+- Flow B engagement = closeButtonEarned (not isFullyWatched)
+- Background tap does NOT open popup (passes through to HTML game)
+- Mute = JS injection `el.muted=true/false` on all audio/video elements
+- JS bridge: `window.AdBridge.openStore()` → `handleStoreRedirect()` → `popup.openStore()`
 
-Auto-Show Invitation: Implement an automated trigger for the Install Invitation (GET Popup) that appears once show_install_popup_after_time_in_sec is reached, rather than waiting for a user tap.
+**iOS port notes:**
+- Need equivalent WKWebView setup with JavaScript message handler (WKScriptMessageHandler) instead of @JavascriptInterface
+- `isPlayable` flag flows from Swift → all the same guards apply
+- Mute = evaluate JS via `WKWebView.evaluateJavaScript()`
+- Timer init: always `isRewarded=false` for playables
+- evaluateFlowBState: use closeButtonEarned for engagement condition
+- Tap-through: override hitTest in the overlay view to pass touches to WKWebView when !isPlayable
+- WKWebView requires WKWebViewConfiguration with `allowsInlineMediaPlayback=true` and `mediaTypesRequiringUserActionForPlayback=[]` (equivalent to setMediaPlaybackRequiresUserGesture=false)
+- Load from local path: `WKWebView.loadFileURL(URL(fileURLWithPath:), allowingReadAccessTo:)` — requires the directory containing the HTML file as `allowingReadAccessTo` parameter
 
-Inactivity Nudge: (Optional) If no touch events are detected via dispatchTouchEvent for 5 seconds, trigger the Install Invitation as a nudge.
+---
 
-4. JS-to-Native Bridge (MRAID-Lite):
+## DELTA-03 — Playable HTML downloaded before display (local file path passed to renderer)
 
-JavaScript Interface: Create a @JavascriptInterface to listen for calls from the HTML5 code (e.g., window.AdBridge.openStore()).
+**C# files changed:**
+- `UASDKVideoCache.cs` — added `DownloadHtmlAsync()` + `GetLocalPathForHtml()` (saves as `{adUnitId}.html`)
+- `UASDK.cs` — `LoadPlayable()` now async; downloads HTML before marking ready; `ClearCache()` also deletes `*.html`; `HandleAdFailed` properly deletes cached HTML file
+- `ShowPlayableAdRequest.cs` — renamed `HtmlUrl` → `HtmlPath` (now a local file path)
+- `UANativeBridge.cs` — extracted `PutSharedAdExtras()` private helper + `LaunchAdActivity()` private helper; both `ShowAd()` and `ShowPlayableAd()` delegate to them (no more duplicated putExtra blocks)
 
-Redirect Logic: Map these JS calls to the existing handleStoreRedirect() method to satisfy the Flow B "Visited Store" requirement.
+**Android files changed:**
+- `AdActivity.java` — removed isPlayable-specific URL validation; `config.isValid()` (file-exists check) now used for both video and playable since both are local paths
 
-The "Flow B" Logic for Playables
-Timer: Starts when the WebView finishes loading.
+**iOS port notes:**
+- `UASDK.LoadPlayable()` download is already platform-agnostic (HttpClient + persistentDataPath) — no iOS-specific change needed
+- The local HTML path must be loaded via `WKWebView.loadFileURL(URL(fileURLWithPath: htmlPath), allowingReadAccessTo: URL(fileURLWithPath: directory))` where `directory` is the parent folder of the HTML file
+- The validation change in AdActivity is Android-only; the iOS equivalent view controller should also use file-existence check rather than URL prefix check
 
-Gate: The "Close (X)" button remains hidden until BOTH the show_close_button_after_time_in_sec has elapsed AND the user has clicked "OPEN STORE" (either via the native UI or a link inside the playable game).
+---
 
-Definition of Done (DoD)
-[ ] Rendering: Verified that a remote HTML5 URL loads and plays at 60 FPS without layout clipping.
+## DELTA-04 — DownloadHtmlAsync file handle released before File.Move
 
-[ ] Interaction: Confirmed that native buttons (Top-Right/Bottom-Center) are clickable while the game is still playable underneath.
+**C# files changed:**
+- `UASDKVideoCache.cs` — `DownloadHtmlAsync`: wrapped `HttpResponseMessage`, `Stream`, and `FileStream` inside an explicit `using (HttpResponseMessage response = ...) { }` block so all handles are disposed before `PromoteTempFile` calls `File.Move`. C# 8 `using` declarations without braces dispose at end of the enclosing scope (the whole `try {}`) — calling `File.Move` inside that scope held the file open, causing "file being used by another process" on Windows.
 
-[ ] Lifecycle: Confirmed that the WebView correctly pauses (onPause) and resumes (onResume) when the user switches apps or opens the Store.
-
-[ ] Gating: Verified that the "X" button correctly transforms from "OPEN STORE" only after the dual-requirement (Time + Action) is satisfied.
-
-[ ] Safety: Confirmed that the "Back" button is intercepted to prevent accidental ad exits during gameplay.
+**iOS port notes:**
+- iOS download code uses `URLSession` / `FileManager.moveItem` — file handles are managed differently and this specific Windows locking issue does not apply. No change needed on iOS.

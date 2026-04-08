@@ -388,6 +388,42 @@ intent.Call<AndroidJavaObject>("putExtra", "IS_FLOW_B", request.IsFlowB);
 
 # Playable Ad Crash Fix — Android (Implemented) / iOS Delta
 
+## Current iOS implementation state (as of 2026-04-08)
+
+The iOS native layer (`UAAdViewController.mm`, `UAAdPopup.mm`) is **video-only**.
+There is no `isPlayable` property, no `WKWebView`, and no `UA_ShowPlayable()` C entry point.
+All fixes below that relate to playable support require **adding new code**, not just patching existing code.
+
+### Key structural differences between iOS and Android implementations
+
+| Aspect | Android (`AdActivity.java`) | iOS (`UAAdViewController.mm`) |
+|---|---|---|
+| Entry point | `onCreate()` Intent extras | `UA_ShowAd()` C function → `presentViewController:` |
+| Ad start | `viewDidAppear` equivalent in `onCreate`/`onResume` | `viewDidAppear:` |
+| Popup attach | `initializeManagers()` in `onCreate` | `viewDidAppear:` |
+| Back button | Hardware back — `handleBackNavigation()` | **Does not exist on iOS** |
+| Popup dismiss path | `popup.onDismissed()` callback fires → `finishWithResult()` | **Does not exist** — UAAdPopupDelegate has no dismiss callback; popup either collapses or transitions to StoreKit |
+| Only exit paths | `onCloseClicked()`, `popup.onDismissed()`, `handleBackNavigation()` | `onCloseTapped` only (+ `handleFlowBCornerButtonTap` for Flow B) |
+
+### Existing code smell in current iOS video code (low priority — no user-facing impact)
+
+**`onCloseTapped` passes wrong `success` value for interstitials:**
+```objc
+// CURRENT (semantically wrong for interstitial):
+[self dismissWithSuccess:self.isFullyWatched];
+
+// CORRECT:
+BOOL success = self.isRewarded ? self.isFullyWatched : YES;
+[self dismissWithSuccess:success];
+```
+`isFullyWatched` is only set when the video loops once completely. For a 30s looping interstitial with a 5s close delay, the user closes at 5s → `isFullyWatched=NO` → native sends `OnAdFinished("false")` to Unity.
+
+**However, this has no observable effect on interstitials.** In `UASDK.cs`, `HandleAdCompleted` routes based on `_currentAdIsRewarded` (set to `false` when `ShowInterstitial()` was called). The interstitial path calls `_pendingInterstitialOnClose?.Invoke()` — a plain `Action` with no bool — so the `success` value is silently discarded. No reward event can fire for interstitials regardless of `success`.
+
+**Fix it anyway when adding playable support** — the same `onCloseTapped` line needs to become the `engagementMet` pattern to handle rewarded playable correctly (Fix 7), so fix the interstitial case at the same time for consistency.
+
+---
+
 ## Summary of Android fixes implemented (2026-04-08)
 
 The following bugs were identified and fixed on the Android side. The iOS native layer
@@ -490,12 +526,131 @@ changes where the same patterns apply.
 
 ---
 
+## Fix 7 — Reward gate in close path uses `engagementMet` pattern (BUG FIX)
+
+**Android change (`AdActivity.java` — `onCloseClicked()`, `popup.onDismissed()`, `handleBackNavigation()`):**
+- All three exit paths previously used `isFullyWatched` as the reward gate
+- For rewarded playable ads `isFullyWatched` is never set — only `closeButtonEarned` is set (when the timer elapses)
+- Fixed by replacing the raw flag with: `boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;`
+- `success = config.isRewarded ? engagementMet : true` is then used for `finishWithResult()`
+
+**iOS delta:**
+- iOS has **one** exit path for non-Flow-B ads: `onCloseTapped` → `[self dismissWithSuccess:self.isFullyWatched]`
+- There is **no** popup dismiss path — `UAAdPopupDelegate` has no dismiss callback; the popup only collapses or transitions to StoreKit
+- The existing `onCloseTapped` already has the interstitial bug noted above (Fix 0 pre-req) — fix both at once:
+  ```objc
+  // Replace:
+  [self dismissWithSuccess:self.isFullyWatched];
+
+  // With (handles interstitial + rewarded video + rewarded playable):
+  BOOL engagementMet = self.isPlayable ? self.closeButtonEarned : self.isFullyWatched;
+  BOOL success = self.isRewarded ? engagementMet : YES;
+  [self dismissWithSuccess:success];
+  ```
+- `closeButtonEarned` on iOS is currently set only in `showCloseButton` — for playable it must also be set in the timer completion path (see Fix 8)
+
+---
+
+## Fix 8 — Flow B playable: `closeButtonEarned` set and `evaluateFlowBState()` called after timer completes (BUG FIX)
+
+**Android change (`AdActivity.java` — `onCountdownComplete()`):**
+- For rewarded playable Flow B, the timer elapsing is the engagement trigger (sets `closeButtonEarned`)
+- `onCountdownComplete()` previously set `closeButtonEarned = true` for Flow B and then returned early without calling `evaluateFlowBState()`
+- This meant the OPEN STORE → ✕ transition never fired if the user had already visited the store before the timer elapsed
+- Fixed by calling `evaluateFlowBState()` before the early return:
+  ```java
+  closeButtonEarned = true;
+  if (config.isFlowB) {
+      evaluateFlowBState(); // ← added
+      return;
+  }
+  ```
+- Note: video Flow B is unaffected — the rewarded video timer drives UI updates but never reaches `onCountdownComplete()`; engagement for video Flow B is gated on `onVideoCompleted()` instead
+
+**Current iOS state:**
+- `onCountdownTick` in iOS reaches `countdownRemaining <= 0` for both video and playable Flow B
+- For video Flow B, when the timer runs out: label is hidden and nothing else happens — this is fine because video engagement is tracked by `onPlayerItemDidPlayToEnd` → `evaluateFlowBState` → `isFullyWatched`
+- The current `evaluateFlowBState` only checks `isFullyWatched && hasVisitedStore` — correct for video-only
+
+**iOS delta (needed when adding playable):**
+- When the countdown reaches zero in `onCountdownTick` and `isFlowB && isPlayable`:
+  - Set `self.closeButtonEarned = YES`
+  - Call `[self evaluateFlowBState]`
+  - Return early (do not show close button directly)
+- Update `evaluateFlowBState` to use the `engagementMet` pattern:
+  ```objc
+  - (void)evaluateFlowBState {
+      if (!self.isFlowB) return;
+      if (self.flowBShowingClose) return;
+      BOOL engagementMet = self.isPlayable ? self.closeButtonEarned : self.isFullyWatched;
+      if (engagementMet && self.hasVisitedStore) {
+          // ... existing transition logic unchanged ...
+      }
+  }
+  ```
+
+---
+
+## Fix 9 — Timer label suppressed entirely for playable ads (UX FIX)
+
+**Android change (`AdUIManager.java` — `createTimerText()` and new `setPlayable()` setter):**
+- The rewarded countdown timer label (`timerText`) was previously hidden only when `disableRewardCountdown=true` or the ad was non-rewarded
+- For rewarded playable ads the timer label was visible but blank — a floating pill overlay that would unpredictably obscure HTML5 game UI
+- Added `private boolean isPlayable = false;` field and `public void setPlayable(boolean playable)` setter to `AdUIManager`
+- Updated visibility gate in `createTimerText()`:
+  ```java
+  timerText.setVisibility(isRewarded && !disableRewardCountdown && !isPlayable ? View.VISIBLE : View.GONE);
+  ```
+- Result: timer label is never added to the view hierarchy for any playable ad (rewarded or not)
+
+**iOS delta:**
+- Add `BOOL isPlayable` property to the iOS UI manager / ad view controller
+- In the method that creates/configures the timer label (`UILabel`): set `timerLabel.hidden = YES` (or skip creation entirely) when `isPlayable == YES`
+- The label must not be shown regardless of whether the ad is rewarded — HTML5 game content must not be obscured
+- Equivalent condition: `timerLabel.hidden = !(isRewarded && !disableRewardCountdown && !isPlayable);`
+
+---
+
+## Fix 10 — `isPlayable` flag wired to UI manager before layout is built (CORRECTNESS)
+
+**Android change (`AdActivity.java` — `initializeManagers()`):**
+- `uiManager.setPlayable(isPlayable)` must be called before `uiManager.setupUI()`, because `createTimerText()` (called inside `setupUI()`) reads the `isPlayable` field to set initial visibility
+- The call order in `initializeManagers()` is:
+  ```java
+  uiManager.setFlowB(config.isFlowB);
+  uiManager.setPlayable(isPlayable);          // ← must precede setupUI()
+  uiManager.setupUI();
+  ```
+- Setting it after `setupUI()` would cause `timerText` to be created with wrong visibility and never corrected
+
+**iOS delta:**
+- Set `isPlayable` on the UI manager / view controller before the layout/view setup method is called
+- If the iOS equivalent builds UI lazily in `viewDidLoad` or a dedicated `setupUI` method, ensure `isPlayable` is assigned in the initializer or before `viewDidLoad` runs (e.g., set it immediately after allocating the view controller, before presenting it)
+- The `isPlayable` value comes from the ad config / show request passed in from `UANativeBridgeIOS`
+
+---
+
 ## iOS Delta — Files to modify
+
+### Pre-requisite: fix existing interstitial bug (no playable needed)
 
 | File | Change needed |
 |---|---|
-| iOS native ad view controller (`.m`/`.mm`) | Use `loadFileURL:allowingReadAccessToURL:` instead of bare path load (Fix 1 + 2) |
-| iOS native ad view controller | Move `loadFileURL:` call to `startAd` equivalent, after UI setup (Fix 3) |
-| iOS native ad view controller | Add 15s `NSTimer` watchdog, cancel in `didFinishNavigation:`, fire failure on timeout (Fix 4) |
-| iOS native ad view controller | Wrap `WKWebView` alloc/init in `@try/@catch`, call failure callback if nil (Fix 5) |
+| `UAAdViewController.mm` — `onCloseTapped` | Replace `dismissWithSuccess:self.isFullyWatched` with `engagementMet` pattern — fixes interstitial always sending `false` to Unity when video hasn't looped yet |
+
+### Playable support additions (new feature)
+
+| File | Change needed |
+|---|---|
+| `UAAdViewController.mm` | Add `isPlayable` BOOL property; set from `UA_ShowPlayable()` entry point (Fix 10) |
+| `UAAdViewController.mm` — `viewDidLoad` / `viewDidAppear:` | Add `WKWebView` + `WKWebViewConfiguration` init; set `allowsInlineMediaPlayback=YES`, JS enabled; guard behind `isPlayable` (Fix 2) |
+| `UAAdViewController.mm` — `startAd` equivalent | Call `loadFileURL:allowingReadAccessToURL:` with `[NSURL fileURLWithPath:self.videoPath]` (Fix 1); start 15s `NSTimer` watchdog (Fix 4); wrap WKWebView init in `@try/@catch` (Fix 5) |
+| `UAAdViewController.mm` — WKNavigationDelegate | Implement `webView:didFinishNavigation:` — cancel watchdog, call `onContentReady` equivalent (Fix 4) |
+| `UAAdViewController.mm` — `onCloseTapped` | Apply `engagementMet = isPlayable ? closeButtonEarned : isFullyWatched` pattern (Fix 7) |
+| `UAAdViewController.mm` — `onCountdownTick` | When `countdownRemaining <= 0 && isFlowB && isPlayable`: set `closeButtonEarned=YES`, call `evaluateFlowBState`, return early (Fix 8) |
+| `UAAdViewController.mm` — `evaluateFlowBState` | Replace `isFullyWatched` check with `isPlayable ? closeButtonEarned : isFullyWatched` (Fix 8) |
+| `UAAdViewController.mm` — `setupRewardCountdownLabel` / `setupCountdown` | Do not add `rewardCountdownLabel` to view when `isPlayable==YES`; set `hidden=YES` if already created (Fix 9) |
+| `UAAdViewController.mm` — `onMuteTapped` | For playable: call `[_webView evaluateJavaScript:@"document.querySelectorAll('audio,video').forEach(...)"]` instead of `self.queuePlayer.muted` |
+| `UAAdViewController.mm` | Add `UA_ShowPlayable()` C entry point (or extend `UA_ShowAd` with `isPlayable` param); mirror `UA_ShowAd` parameter set |
 | `UASDK.cs` | Already fixed — `File.Exists` guard in `ShowPlayable()` covers iOS too (Fix 6 ✓) |
+| N/A | No back button on iOS — Fix 6b not applicable ✓ |

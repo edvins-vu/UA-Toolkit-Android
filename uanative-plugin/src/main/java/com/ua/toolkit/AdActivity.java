@@ -3,6 +3,7 @@ package com.ua.toolkit;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.net.Uri;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
@@ -205,6 +206,7 @@ public class AdActivity extends Activity implements
         uiManager.setRewardTextSizeSp(config.rewardTextSizeSp);
         uiManager.setRewardTextColor(config.rewardTextColor);
         uiManager.setFlowB(config.isFlowB);
+        uiManager.setPlayable(isPlayable);
         uiManager.setOpenStoreButtonText(config.openStoreButtonText);
         uiManager.setupUI();
         uiManager.setupFullscreen();
@@ -240,33 +242,48 @@ public class AdActivity extends Activity implements
             if (videoViewPlaceholder != null && videoViewPlaceholder.getParent() != null) {
                 ((android.view.ViewGroup) videoViewPlaceholder.getParent()).removeView(videoViewPlaceholder);
             }
-            webView = new WebView(this);
-            WebSettings ws = webView.getSettings();
-            ws.setJavaScriptEnabled(true);
-            ws.setDomStorageEnabled(true);
-            ws.setDatabaseEnabled(true);
-            ws.setMediaPlaybackRequiresUserGesture(false);
-            webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
-            webView.setWebViewClient(new WebViewClient() {
-                @Override
-                public void onPageFinished(WebView view, String url) {
-                    if (pageLoaded) return;
-                    pageLoaded = true;
-                    onContentReady();
-                }
-                @Override
-                public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                    if (!req.isForMainFrame()) return;
-                    String msg = "WebView error: " + (err != null ? err.getDescription() : "unknown");
-                    Log.e(TAG, msg);
-                    if (callback != null) callback.onAdFailed(msg);
-                    finishWithResult(false);
-                }
-            });
-            FrameLayout.LayoutParams matchParent = new FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
-            uiManager.getRootLayout().addView(webView, 0, matchParent);
-            webView.loadUrl(config.videoPath);
+            try {
+                webView = new WebView(this);
+                WebSettings ws = webView.getSettings();
+                ws.setJavaScriptEnabled(true);
+                ws.setDomStorageEnabled(true);
+                ws.setDatabaseEnabled(true);
+                ws.setMediaPlaybackRequiresUserGesture(false);
+                // Required for loading cached local HTML files via file:// URI on API 30+.
+                // Without setAllowFileAccess the WebView throws a SecurityException on modern Android.
+                // Without setAllowUniversalAccessFromFileURLs the HTML cannot reference local sub-resources
+                // (JS bundles, CSS, images) bundled alongside the cached index.html.
+                ws.setAllowFileAccess(true);
+                ws.setAllowUniversalAccessFromFileURLs(true);
+                webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
+                webView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public void onPageFinished(WebView view, String url) {
+                        if (pageLoaded) return;
+                        pageLoaded = true;
+                        onContentReady();
+                    }
+                    @Override
+                    public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
+                        if (!req.isForMainFrame()) return;
+                        String msg = "WebView error: " + (err != null ? err.getDescription() : "unknown");
+                        Log.e(TAG, msg);
+                        if (callback != null) callback.onAdFailed(msg);
+                        finishWithResult(false);
+                    }
+                });
+                FrameLayout.LayoutParams matchParent = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+                uiManager.getRootLayout().addView(webView, 0, matchParent);
+                // loadUrl is deferred to startAd() so it runs after all managers and popup are fully
+                // wired up — mirrors the video path and gives the watchdog a clean start point.
+            } catch (Exception e) {
+                String msg = "WebView initialization failed: " + e.getMessage();
+                Log.e(TAG, msg);
+                if (callback != null) callback.onAdFailed(msg);
+                finishWithResult(false);
+                return;
+            }
         } else {
             videoPlayer = new AdVideoPlayer(uiManager.getVideoView(), this);
         }
@@ -282,8 +299,11 @@ public class AdActivity extends Activity implements
             @Override
             public void onDismissed()
             {
-                boolean success = config.isRewarded ? isFullyWatched : true;
-                Log.d(TAG, "popup.onDismissed — success=" + success);
+                // Playable reward gate: timer elapsed (closeButtonEarned), not video completion.
+                boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
+                boolean success = config.isRewarded ? engagementMet : true;
+                Log.d(TAG, "popup.onDismissed — success=" + success + " isPlayable=" + isPlayable
+                        + " closeButtonEarned=" + closeButtonEarned + " isFullyWatched=" + isFullyWatched);
                 finishWithResult(success);
             }
 
@@ -340,6 +360,8 @@ public class AdActivity extends Activity implements
     }
 
     private void onContentReady() {
+        // Cancel the load watchdog — content is ready regardless of whether this was a video or playable.
+        prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         notifyAdStarted();
         timerManager.start();
         popup.schedulePeek(config.peekDelay);
@@ -351,11 +373,21 @@ public class AdActivity extends Activity implements
     }
 
     private void startAd() {
-        if (!isPlayable) {
+        if (resultSent) return; // initializeManagers() failed and already called finishWithResult
+        if (isPlayable) {
+            if (webView == null) return; // defensive: WebView init failed silently
+            // Convert the raw filesystem path to a proper file:// URI.
+            // Uri.fromFile() produces "file:///data/..." correctly regardless of leading slash.
+            // Calling loadUrl() with a bare path (no scheme) causes WebView to misinterpret it
+            // as a relative or HTTP URL and fail silently on modern Android.
+            String htmlUri = Uri.fromFile(new java.io.File(config.videoPath)).toString();
+            Log.d(TAG, "startAd (playable) — loading: " + htmlUri);
+            webView.loadUrl(htmlUri);
+            prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
+        } else {
             videoPlayer.load(config.videoPath);
             prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
         }
-        // Playable: WebView is already loading via webView.loadUrl() in initializeManagers().
     }
 
     private void finishWithResult(boolean success) {
@@ -380,8 +412,11 @@ public class AdActivity extends Activity implements
             handleFlowBCornerButtonTap();
             return;
         }
-        boolean success = config.isRewarded ? isFullyWatched : true;
-        Log.d(TAG, "onCloseClicked — isRewarded=" + config.isRewarded + " isFullyWatched=" + isFullyWatched + " success=" + success);
+        // Playable reward gate: timer elapsed (closeButtonEarned), not video completion.
+        boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
+        boolean success = config.isRewarded ? engagementMet : true;
+        Log.d(TAG, "onCloseClicked — isRewarded=" + config.isRewarded + " isPlayable=" + isPlayable
+                + " closeButtonEarned=" + closeButtonEarned + " isFullyWatched=" + isFullyWatched + " success=" + success);
         finishWithResult(success);
     }
 
@@ -446,7 +481,14 @@ public class AdActivity extends Activity implements
     {
         Log.d(TAG, "onCountdownComplete — close button earned, popupExpanded=" + (popup != null && popup.isExpanded()));
         closeButtonEarned = true;
-        if (config.isFlowB) return; // Flow B ignores countdown-based close
+        if (config.isFlowB) {
+            // For playable Flow B the timer drives closeButtonEarned (engagement gate).
+            // evaluateFlowBState() must be called here so the OPEN STORE → ✕ transition fires
+            // if the store was already visited before the timer elapsed.
+            // (Video Flow B never reaches this path — rewarded video timer never fires onCountdownComplete.)
+            evaluateFlowBState();
+            return;
+        }
         if (popup == null || !popup.isExpanded()) {
             // If skip button is already visible the user controls the transition by tapping it.
             // Only auto-show close when skip never appeared (disabled or skipDelay >= closeDelay).
@@ -478,7 +520,9 @@ public class AdActivity extends Activity implements
             return;
         }
         if (closeVisible) {
-            boolean success = config.isRewarded ? isFullyWatched : true;
+            // Playable reward gate: timer elapsed (closeButtonEarned), not video completion.
+            boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
+            boolean success = config.isRewarded ? engagementMet : true;
             finishWithResult(success);
         }
         // Close button not visible: consume silently — ad stays locked open

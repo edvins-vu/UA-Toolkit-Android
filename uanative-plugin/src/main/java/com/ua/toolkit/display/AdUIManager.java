@@ -70,6 +70,7 @@ public class AdUIManager
 
     private boolean      disableMuteButton  = false;
     private boolean      disableSkipButton  = false;
+    private boolean      isPlayable         = false;
     private final AdUILayout _layout = new AdUILayout();
 
     // Flow B
@@ -95,6 +96,7 @@ public class AdUIManager
     public void setRewardTextSizeSp(int sp)                  { this.rewardTextSizeSp = sp; }
     public void setRewardTextColor(String hex)               { this.rewardTextColor = hex; }
     public void setFlowB(boolean flowB)                      { this.isFlowB = flowB; }
+    public void setPlayable(boolean playable)                 { this.isPlayable = playable; }
     public void setOpenStoreButtonText(String text)           { if (text != null && !text.isEmpty()) this.openStoreButtonText = text; }
 
     public void setInsetsReadyCallback(InsetsReadyCallback cb)
@@ -200,7 +202,10 @@ public class AdUIManager
                 dpToPx(_layout.timerPaddingHorizontalDp), dpToPx(_layout.timerPaddingVerticalDp));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
-        timerText.setVisibility(isRewarded && !disableRewardCountdown ? View.VISIBLE : View.GONE);
+        // Playable ads are HTML5 content — a floating timer pill would overlap game UI unpredictably.
+        // Reward for rewarded playable is gated on the close button delay (closeButtonEarned),
+        // not on a visible countdown, so the timer text is never needed for playable ads.
+        timerText.setVisibility(isRewarded && !disableRewardCountdown && !isPlayable ? View.VISIBLE : View.GONE);
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,

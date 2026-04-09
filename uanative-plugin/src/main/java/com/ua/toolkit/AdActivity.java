@@ -261,6 +261,27 @@ public class AdActivity extends Activity implements
                 webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
                 webView.setWebViewClient(new WebViewClient() {
                     @Override
+                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                        // Inject audio context patcher before the page's own scripts run.
+                        // Patches the AudioContext constructor to track all instances and exposes
+                        // window.__adMute(bool) which mutes both Web Audio API and media elements.
+                        view.evaluateJavascript(
+                            "(function(){" +
+                            "var _c=[],_m=false,_O=window.AudioContext||window.webkitAudioContext;" +
+                            "if(_O){" +
+                            "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m)c.suspend();}catch(e){}return c;};" +
+                            "_P.prototype=_O.prototype;" +
+                            "window.AudioContext=window.webkitAudioContext=_P;" +
+                            "}" +
+                            "window.__adMute=function(m){" +
+                            "_m=m;" +
+                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});" +
+                            "_c.forEach(function(c){try{m?c.suspend():c.resume();}catch(e){}});" +
+                            "try{if(window.Howler)window.Howler.mute(m);}catch(e){}" +
+                            "};" +
+                            "})()", null);
+                    }
+                    @Override
                     public void onPageFinished(WebView view, String url) {
                         if (pageLoaded) return;
                         pageLoaded = true;
@@ -359,6 +380,16 @@ public class AdActivity extends Activity implements
     private void onContentReady() {
         // Cancel the load watchdog — content is ready regardless of whether this was a video or playable.
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
+        if (isPlayable) {
+            uiManager.showPlayableControls();
+            // Re-apply mute state in case the user toggled before onPageFinished
+            if (webView != null && audioManager.isMuted()) {
+                webView.evaluateJavascript(
+                    "if(typeof window.__adMute==='function')window.__adMute(true);" +
+                    "else document.querySelectorAll('audio,video').forEach(function(el){el.muted=true;});",
+                    null);
+            }
+        }
         notifyAdStarted();
         timerManager.start();
         popup.schedulePeek(config.peekDelay);
@@ -454,8 +485,10 @@ public class AdActivity extends Activity implements
         boolean muted = audioManager.isMuted();
         if (isPlayable && webView != null) {
             webView.evaluateJavascript(
-                "(function(){ document.querySelectorAll('audio,video')" +
-                ".forEach(function(el){ el.muted=" + muted + "; }); })()", null);
+                "(function(m){" +
+                "if(typeof window.__adMute==='function'){window.__adMute(m);}" +
+                "else{document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});}" +
+                "})(" + muted + ")", null);
         }
         uiManager.updateMuteButton(muted);
     }

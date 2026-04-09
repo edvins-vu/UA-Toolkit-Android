@@ -180,7 +180,8 @@ public class AdUIManager
         params.topMargin = dpToPx(_layout.muteButtonTopMarginDp);
         params.leftMargin = dpToPx(_layout.muteButtonLeftMarginDp);
         muteButton.setLayoutParams(params);
-        muteButton.setVisibility(disableMuteButton ? View.GONE : View.VISIBLE);
+        // Playable: start hidden — shown by showPlayableControls() once the WebView content is ready.
+        muteButton.setVisibility(disableMuteButton || isPlayable ? View.GONE : View.VISIBLE);
         muteButton.setOnClickListener(v -> listener.onMuteClicked());
     }
 
@@ -293,7 +294,8 @@ public class AdUIManager
             openStoreButton.setMinimumWidth(0);
             openStoreButton.setLayoutParams(new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
-            openStoreButton.setVisibility(View.VISIBLE);
+            // Playable: start hidden — shown by showPlayableControls() once content is ready.
+            openStoreButton.setVisibility(isPlayable ? View.GONE : View.VISIBLE);
             openStoreButton.setOnClickListener(v -> listener.onCloseClicked());
             buttonContainer.addView(openStoreButton);
         }
@@ -479,6 +481,14 @@ public class AdUIManager
     public void updateMuteButton(boolean isMuted)
     {
         if (muteButton != null) updateMuteButtonIcon(isMuted);
+    }
+
+    /** Shows controls that are hidden during playable ad load — called when WebView content is ready. */
+    public void showPlayableControls()
+    {
+        if (!isPlayable) return;
+        if (muteButton != null && !disableMuteButton) muteButton.setVisibility(View.VISIBLE);
+        if (isFlowB && openStoreButton != null) openStoreButton.setVisibility(View.VISIBLE);
     }
 
     public boolean isCloseButtonVisible()

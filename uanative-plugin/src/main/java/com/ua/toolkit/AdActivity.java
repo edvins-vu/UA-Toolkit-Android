@@ -261,25 +261,30 @@ public class AdActivity extends Activity implements
                 webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
                 webView.setWebViewClient(new WebViewClient() {
                     @Override
-                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                        // Inject audio context patcher before the page's own scripts run.
-                        // Patches the AudioContext constructor to track all instances and exposes
-                        // window.__adMute(bool) which mutes both Web Audio API and media elements.
-                        view.evaluateJavascript(
-                            "(function(){" +
-                            "var _c=[],_m=false,_O=window.AudioContext||window.webkitAudioContext;" +
-                            "if(_O){" +
-                            "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m)c.suspend();}catch(e){}return c;};" +
-                            "_P.prototype=_O.prototype;" +
-                            "window.AudioContext=window.webkitAudioContext=_P;" +
-                            "}" +
-                            "window.__adMute=function(m){" +
-                            "_m=m;" +
-                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});" +
-                            "_c.forEach(function(c){try{m?c.suspend():c.resume();}catch(e){}});" +
-                            "try{if(window.Howler)window.Howler.mute(m);}catch(e){}" +
-                            "};" +
-                            "})()", null);
+                    public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                        // Intercept the main HTML file and prepend the mute patcher script inline.
+                        // evaluateJavascript() from onPageStarted is async — the game's own scripts
+                        // run first, so the AudioContext constructor patch arrives too late.
+                        // Injecting directly into the HTML content guarantees the patch executes
+                        // before any page JS and correctly intercepts all AudioContext instances.
+                        String scheme = request.getUrl().getScheme();
+                        String path   = request.getUrl().getPath();
+                        if ("file".equals(scheme) && path != null && path.endsWith(".html")) {
+                            try {
+                                java.io.File file = new java.io.File(path);
+                                if (!file.exists()) return null;
+                                byte[] raw = readAllBytes(new java.io.FileInputStream(file));
+                                String html = new String(raw, "UTF-8");
+                                String patched = "<script>" + MUTE_PATCHER_JS + "</script>" + html;
+                                return new android.webkit.WebResourceResponse(
+                                    "text/html", "UTF-8",
+                                    new java.io.ByteArrayInputStream(patched.getBytes("UTF-8")));
+                            } catch (Exception e) {
+                                Log.e(TAG, "shouldInterceptRequest: mute patcher injection failed — " + e.getMessage());
+                                return null; // fall through to normal WebView loading
+                            }
+                        }
+                        return null;
                     }
                     @Override
                     public void onPageFinished(WebView view, String url) {
@@ -681,5 +686,38 @@ public class AdActivity extends Activity implements
     public static void dismissAd() {
         AdActivity instance = currentInstanceRef != null ? currentInstanceRef.get() : null;
         if (instance != null) instance.runOnUiThread(() -> instance.finishWithResult(false));
+    }
+
+    // --- Playable audio helpers ---
+
+    /**
+     * Injected inline into the HTML content via shouldInterceptRequest before any page scripts run.
+     * Patches the AudioContext constructor to track every instance the game creates, and exposes
+     * window.__adMute(bool) so the native mute button can suspend/resume Web Audio API audio.
+     * Falls back to muting <audio>/<video> elements and Howler.js if present.
+     */
+    private static final String MUTE_PATCHER_JS =
+        "(function(){" +
+        "var _c=[],_m=false,_O=window.AudioContext||window.webkitAudioContext;" +
+        "if(_O){" +
+        "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m)c.suspend();}catch(e){}return c;};" +
+        "_P.prototype=_O.prototype;" +
+        "window.AudioContext=window.webkitAudioContext=_P;" +
+        "}" +
+        "window.__adMute=function(m){" +
+        "_m=m;" +
+        "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});" +
+        "_c.forEach(function(c){try{m?c.suspend():c.resume();}catch(e){}});" +
+        "try{if(window.Howler)window.Howler.mute(m);}catch(e){}" +
+        "};" +
+        "})()";
+
+    private static byte[] readAllBytes(java.io.InputStream is) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        int n;
+        while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+        is.close();
+        return buf.toByteArray();
     }
 }

@@ -62,11 +62,7 @@ public class AdActivity extends Activity implements
     private final Handler flowBHandler = new Handler(Looper.getMainLooper());
 
     private final Handler prepareWatchdog = new Handler(Looper.getMainLooper());
-    private final Runnable prepareTimeoutRunnable = () -> {
-        Log.e(TAG, "Video prepare timed out after " + PREPARE_TIMEOUT_MS + "ms — MediaPlayer fired neither onPrepared nor onError");
-        if (callback != null) callback.onAdFailed("Video prepare timed out");
-        finishWithResult(false);
-    };
+    private Runnable prepareTimeoutRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -81,9 +77,7 @@ public class AdActivity extends Activity implements
         {
             String errorMsg = "Invalid config - ad file is missing or path is null"
                     + (config.videoPath != null ? ": " + config.videoPath : "");
-            Log.e(TAG, errorMsg);
-            if (callback != null) callback.onAdFailed(errorMsg);
-            finishWithResult(false);
+            failAd(errorMsg);
             return;
         }
 
@@ -102,6 +96,7 @@ public class AdActivity extends Activity implements
             closeButtonEarned = savedInstanceState.getBoolean("closeButtonEarned", false);
             savedVideoPosition = savedInstanceState.getInt("videoPosition", 0);
             hasVisitedStore   = savedInstanceState.getBoolean("hasVisitedStore", false);
+            adStartedFired    = savedInstanceState.getBoolean("adStartedFired", false);
             Log.d(TAG, "onCreate: state restored — isFullyWatched=" + isFullyWatched
                     + " closeButtonEarned=" + closeButtonEarned
                     + " videoPosition=" + savedVideoPosition);
@@ -249,11 +244,19 @@ public class AdActivity extends Activity implements
                 ws.setDomStorageEnabled(true);
                 ws.setDatabaseEnabled(true);
                 ws.setMediaPlaybackRequiresUserGesture(false);
-                // Required for loading cached local HTML files via file:// URI on API 30+.
-                // Without setAllowFileAccess the WebView throws a SecurityException on modern Android.
-                // Without setAllowUniversalAccessFromFileURLs the HTML cannot reference local sub-resources
-                // (JS bundles, CSS, images) bundled alongside the cached index.html.
+                // setAllowFileAccess — required to load cached HTML via file:// URI on API 30+.
+                // Without it the WebView throws a SecurityException on modern Android.
                 ws.setAllowFileAccess(true);
+                // setAllowUniversalAccessFromFileURLs — required for HTML5 games that reference
+                // sub-resources (JS bundles, CSS, images) via relative paths from a cached index.html.
+                // Without it, file:// origins are sandboxed and cross-file reads are blocked.
+                //
+                // Security trade-off: this setting permits any file:// page to read any other file://
+                // path accessible to the app's UID. The risk is accepted because:
+                //   1. HTML content is downloaded exclusively from our own ad servers.
+                //   2. UASDKVideoCache validates Content-Length and uses atomic rename — no partial writes.
+                //   3. The WebView has no internet access beyond what the HTML itself initiates.
+                // Do NOT enable this for WebViews that load third-party or user-supplied URLs.
                 ws.setAllowUniversalAccessFromFileURLs(true);
                 webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
                 webView.setWebViewClient(new WebViewClient() {
@@ -266,10 +269,7 @@ public class AdActivity extends Activity implements
                     @Override
                     public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
                         if (!req.isForMainFrame()) return;
-                        String msg = "WebView error: " + (err != null ? err.getDescription() : "unknown");
-                        Log.e(TAG, msg);
-                        if (callback != null) callback.onAdFailed(msg);
-                        finishWithResult(false);
+                        failAd("WebView error: " + (err != null ? err.getDescription() : "unknown"));
                     }
                 });
                 FrameLayout.LayoutParams matchParent = new FrameLayout.LayoutParams(
@@ -278,10 +278,7 @@ public class AdActivity extends Activity implements
                 // loadUrl is deferred to startAd() so it runs after all managers and popup are fully
                 // wired up — mirrors the video path and gives the watchdog a clean start point.
             } catch (Exception e) {
-                String msg = "WebView initialization failed: " + e.getMessage();
-                Log.e(TAG, msg);
-                if (callback != null) callback.onAdFailed(msg);
-                finishWithResult(false);
+                failAd("WebView initialization failed: " + e.getMessage());
                 return;
             }
         } else {
@@ -373,7 +370,13 @@ public class AdActivity extends Activity implements
     }
 
     private void startAd() {
-        if (resultSent) return; // initializeManagers() failed and already called finishWithResult
+        if (resultSent) return; // initializeManagers() failed and already called failAd
+        prepareTimeoutRunnable = () -> {
+            String msg = isPlayable
+                ? "Playable ad load timed out — WebView did not fire onPageFinished"
+                : "Video prepare timed out — MediaPlayer fired neither onPrepared nor onError";
+            failAd(msg);
+        };
         if (isPlayable) {
             if (webView == null) return; // defensive: WebView init failed silently
             // Convert the raw filesystem path to a proper file:// URI.
@@ -402,6 +405,23 @@ public class AdActivity extends Activity implements
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
         if (callback != null) callback.onAdFinished(success);
+        callback = null;
+        finish();
+        overridePendingTransition(0, R.anim.slide_out_bottom);
+    }
+
+    private void failAd(String reason) {
+        Log.e(TAG, "failAd: " + reason);
+        if (resultSent) return;
+        resultSent = true;
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
+        flowBHandler.removeCallbacksAndMessages(null);
+        unregisterBackCallback();
+        if (popup != null) { popup.cancel(); popup = null; }
+        if (timerManager != null) timerManager.stop();
+        if (audioManager != null) audioManager.release();
+        if (callback != null) callback.onAdFailed(reason);
         callback = null;
         finish();
         overridePendingTransition(0, R.anim.slide_out_bottom);
@@ -462,10 +482,7 @@ public class AdActivity extends Activity implements
 
     @Override public void onVideoError(int what, int extra) {
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
-        String errorMsg = "Video playback error: what=" + what + ", extra=" + extra;
-        Log.e(TAG, errorMsg);
-        if (callback != null) callback.onAdFailed(errorMsg);
-        finishWithResult(false);
+        failAd("Video playback error: what=" + what + ", extra=" + extra);
     }
     @Override public void onCountdownTick(int rem) {
         if (!config.isRewarded && !closeButtonEarned && (config.closeButtonDelay - rem) >= config.skipButtonDelaySec) {
@@ -604,6 +621,7 @@ public class AdActivity extends Activity implements
         outState.putBoolean("isFullyWatched", isFullyWatched);
         outState.putBoolean("closeButtonEarned", closeButtonEarned);
         outState.putBoolean("hasVisitedStore", hasVisitedStore);
+        outState.putBoolean("adStartedFired", adStartedFired);
         int pos = videoPlayer != null
                 ? Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition())
                 : 0;

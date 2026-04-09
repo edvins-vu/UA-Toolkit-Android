@@ -24,6 +24,7 @@ public class AdTimerManager
     private long pauseTime = 0;
     private boolean closeButtonShown = false;
     private boolean isStarted = false;
+    private boolean isRunning = false;
     private boolean rewardEarned = false;
     private Runnable updateTask;
 
@@ -39,6 +40,7 @@ public class AdTimerManager
     {
         if (isStarted) return; // Video re-prepared after surface recreation — don't reset the clock
         isStarted = true;
+        isRunning = true;
         adStartTime = System.currentTimeMillis();
 
         updateTask = new Runnable()
@@ -51,6 +53,10 @@ public class AdTimerManager
                 {
                     handler.postDelayed(this, 100);
                 }
+                else
+                {
+                    isRunning = false;
+                }
             }
         };
 
@@ -60,11 +66,13 @@ public class AdTimerManager
     public void pause()
     {
         pauseTime = System.currentTimeMillis();
+        isRunning = false;
         handler.removeCallbacksAndMessages(null);
     }
 
     public void stop()
     {
+        isRunning = false;
         handler.removeCallbacksAndMessages(null);
     }
 
@@ -78,8 +86,9 @@ public class AdTimerManager
             pauseTime = 0;
         }
 
-        if (updateTask != null)
+        if (updateTask != null && isStarted && !isRunning)
         {
+            isRunning = true;
             handler.post(updateTask);
         }
     }

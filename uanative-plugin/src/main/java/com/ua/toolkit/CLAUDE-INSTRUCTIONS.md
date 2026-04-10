@@ -1,82 +1,27 @@
-# iOS Delta Changes
-Changes made to the Android plugin after the iOS implementation plan was written.
-Each entry must be ported to the iOS equivalent files when iOS implementation begins.
+Resolve Playable Ad Audio ducking and UI Edge-Case Behaviors
 
----
-
-## DELTA-01 — Skip button no longer auto-promotes to close button on countdown complete
-
-**Android files changed:**
-- `AdUIManager.java` — added `isSkipButtonVisible()` helper
-- `AdActivity.java` — `onCountdownComplete()`: only calls `showCloseButton()` if skip button is not currently visible
-
-**Old behavior:** When `closeButtonDelay` elapsed, `showCloseButton()` was always called, hiding the skip button and showing close regardless of whether skip was visible.
-
-**New behavior:** If the skip button is already visible when countdown completes, leave it — the user taps skip to promote to close. Close only auto-shows when skip never appeared (disabled, or `skipButtonDelaySec >= closeButtonDelay`).
-
-**iOS port notes:**
-- Add equivalent of `isSkipButtonVisible()` check in the countdown-complete handler
-- The skip button click handler already calls `showCloseButton()` — no change needed there
-- Applies to non-rewarded flow only (skip is never shown for rewarded ads)
-
----
-
-## DELTA-02 — Playable Ad format (HTML5/WebView renderer inside existing ad flow)
-
-**Android files changed:**
-- `AdJsBridge.java` — new file, `@JavascriptInterface` bridge; `openStore()` → `activity.handleStoreRedirect()`
-- `AdActivity.java` — `isPlayable` flag from `IS_PLAYABLE` intent extra; WebView renderer branch; `onContentReady()` replaces `onVideoPrepared()` shared startup; `evaluateFlowBState()` uses `closeButtonEarned` for playable; mute injects JS; lifecycle routes to WebView; tap-through disabled for playable; `IS_PLAYABLE` flag from intent
-- AndroidManifest.xml — `hardwareAccelerated="true"` (already present)
-
-**C# files changed:**
-- `PlayableLoadRequest.cs` — new file (HtmlUrl replaces VideoUrl, adds IsRewarded)
-- `ShowPlayableAdRequest.cs` — new file (HtmlPath = local cached file path, IS_PLAYABLE flag to native)
-- `AdUnitState.cs` — added `HtmlUrl` and `IsRewarded` fields; `Reset()` clears HtmlUrl
-- `UANativeBridge.cs` — `ShowPlayableAd()` method targeting same AdActivity with `IS_PLAYABLE=true`; `LaunchAdActivity()` and `PutSharedAdExtras()` private helpers extracted to eliminate duplication with `ShowAd()`
-- `UASDK.cs` — `AdType.Playable`; `_playableStates` dict; Playable events; `LoadPlayable()` async with HTML download; `IsPlayableReady()`; `ShowPlayable()`; all internal handlers extended for playable path
-
-**Key behavioral differences from video ads:**
-- No reward countdown text, no "Reward earned!" overlay (AdTimerManager init'd with isRewarded=false)
-- Reward condition = closeButtonDelay elapsed (not video completed)
-- Flow B engagement = closeButtonEarned (not isFullyWatched)
-- Background tap does NOT open popup (passes through to HTML game)
-- Mute = JS injection `el.muted=true/false` on all audio/video elements
-- JS bridge: `window.AdBridge.openStore()` → `handleStoreRedirect()` → `popup.openStore()`
-
-**iOS port notes:**
-- Need equivalent WKWebView setup with JavaScript message handler (WKScriptMessageHandler) instead of @JavascriptInterface
-- `isPlayable` flag flows from Swift → all the same guards apply
-- Mute = evaluate JS via `WKWebView.evaluateJavaScript()`
-- Timer init: always `isRewarded=false` for playables
-- evaluateFlowBState: use closeButtonEarned for engagement condition
-- Tap-through: override hitTest in the overlay view to pass touches to WKWebView when !isPlayable
-- WKWebView requires WKWebViewConfiguration with `allowsInlineMediaPlayback=true` and `mediaTypesRequiringUserActionForPlayback=[]` (equivalent to setMediaPlaybackRequiresUserGesture=false)
-- Load from local path: `WKWebView.loadFileURL(URL(fileURLWithPath:), allowingReadAccessTo:)` — requires the directory containing the HTML file as `allowingReadAccessTo` parameter
-
----
-
-## DELTA-03 — Playable HTML downloaded before display (local file path passed to renderer)
-
-**C# files changed:**
-- `UASDKVideoCache.cs` — added `DownloadHtmlAsync()` + `GetLocalPathForHtml()` (saves as `{adUnitId}.html`)
-- `UASDK.cs` — `LoadPlayable()` now async; downloads HTML before marking ready; `ClearCache()` also deletes `*.html`; `HandleAdFailed` properly deletes cached HTML file
-- `ShowPlayableAdRequest.cs` — renamed `HtmlUrl` → `HtmlPath` (now a local file path)
-- `UANativeBridge.cs` — extracted `PutSharedAdExtras()` private helper + `LaunchAdActivity()` private helper; both `ShowAd()` and `ShowPlayableAd()` delegate to them (no more duplicated putExtra blocks)
-
-**Android files changed:**
-- `AdActivity.java` — removed isPlayable-specific URL validation; `config.isValid()` (file-exists check) now used for both video and playable since both are local paths
-
-**iOS port notes:**
-- `UASDK.LoadPlayable()` download is already platform-agnostic (HttpClient + persistentDataPath) — no iOS-specific change needed
-- The local HTML path must be loaded via `WKWebView.loadFileURL(URL(fileURLWithPath: htmlPath), allowingReadAccessTo: URL(fileURLWithPath: directory))` where `directory` is the parent folder of the HTML file
-- The validation change in AdActivity is Android-only; the iOS equivalent view controller should also use file-existence check rather than URL prefix check
-
----
-
-## DELTA-04 — DownloadHtmlAsync file handle released before File.Move
-
-**C# files changed:**
-- `UASDKVideoCache.cs` — `DownloadHtmlAsync`: wrapped `HttpResponseMessage`, `Stream`, and `FileStream` inside an explicit `using (HttpResponseMessage response = ...) { }` block so all handles are disposed before `PromoteTempFile` calls `File.Move`. C# 8 `using` declarations without braces dispose at end of the enclosing scope (the whole `try {}`) — calling `File.Move` inside that scope held the file open, causing "file being used by another process" on Windows.
-
-**iOS port notes:**
-- iOS download code uses `URLSession` / `FileManager.moveItem` — file handles are managed differently and this specific Windows locking issue does not apply. No change needed on iOS.
+Investigate and resolve reported issues regarding audio persistence and UI control failures in the new HTML5 Playable Ad workflow. The primary focus is ensuring that ad audio mutes/unmutes in sync with device hardware states and that the ad handles interruptions (phone calls, backgrounding) without breaking the WebView state.
+Key Bug Areas & Scenarios
+1. Hardware Audio Sync (Mute Switch/Volume):
+Scenario: User toggles the physical Mute switch (iOS) or System Mute (Android) while the ad is playing.
+Bug: Audio continues to play despite the device being set to silent.
+Fix: Ensure the WebView's audio context is tied to the STREAM_MUSIC (Android) or AVAudioSession (iOS) categories and responds to volume change broadcasts.
+2. App Switching & Interruption Lifecycle:
+Scenario: The user receives a phone call or swipes to the home screen while a Playable Ad is active.
+Bug: The ad's audio keeps playing in the background, or the WebView "freezes" and doesn't resume when the user returns.
+Fix: Explicitly call webView.onPause()/onResume() (Android) and evaluateJavaScript("pauseGame()") (MRAID) to freeze the JS engine during background states.
+3. "Ghost" Audio after Dismissal:
+Scenario: The user closes the ad and returns to the game.
+Bug: Interactive sounds from the playable continue to loop in the background of the main game.
+Fix: Ensure the WebView is completely destroyed and the URL is cleared (loadUrl("about:blank")) when the PlayableAdActivity is destroyed.
+4. Native UI vs. WebView Layering (Z-Order Clips):
+Scenario: User interacts with the "GET" button or "X" button.
+Bug: Tapping these native buttons occasionally registers as a "tap" inside the game underneath, or the buttons are non-responsive due to WebView focus.
+Technical Validation Requirements
+iOS: Verify WKWebView configuration for allowsInlineMediaPlayback and mediaTypesRequiringUserActionForPlayback.
+Android: Verify WebSettings.setMediaPlaybackRequiresUserGesture(false) and AudioManager focus request logic.
+Definition of Done (DoD)
+[ ] Silent Mode: Ad audio is 100% silent when the device is muted via hardware or system tray.
+[ ] Zero Background Leak: Confirmed via logs that the WebView process is killed and audio stops immediately upon ad close.
+[ ] Recovery: Ad successfully resumes from the exact frame it was on after an app-switch/interruption.
+[ ] Control Integrity: Verified that native SDK UI (Close/Mute/GET) always takes priority over the WebView's interactive layer.

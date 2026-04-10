@@ -54,6 +54,7 @@ public class AdActivity extends Activity implements
     private boolean adStartedFired = false;
     private int savedVideoPosition = 0;
     private OnBackInvokedCallback backCallback; // API 33+
+    private android.content.BroadcastReceiver noisyAudioReceiver; // headphone unplug
 
     // Flow B
     private boolean hasVisitedStore   = false;
@@ -211,8 +212,11 @@ public class AdActivity extends Activity implements
             public void onAudioFocusPause()
             {
                 pausedByAudioFocus = true;
-                if (isPlayable) { if (webView != null) webView.onPause(); }
-                else if (videoPlayer != null) { videoPlayer.pause(); }
+                if (isPlayable && webView != null) {
+                    webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
+                    webView.pauseTimers();
+                    webView.onPause();
+                } else if (videoPlayer != null) { videoPlayer.pause(); }
                 if (timerManager != null) timerManager.pause();
             }
             @Override
@@ -222,8 +226,11 @@ public class AdActivity extends Activity implements
                         && (popup == null || !popup.isExpanded()))
                 {
                     pausedByAudioFocus = false;
-                    if (isPlayable) { if (webView != null) webView.onResume(); }
-                    else if (videoPlayer != null) { videoPlayer.resume(); }
+                    if (isPlayable && webView != null) {
+                        webView.onResume();
+                        webView.resumeTimers();
+                        webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(false);", null);
+                    } else if (videoPlayer != null) { videoPlayer.resume(); }
                     timerManager.resume();
                 }
             }
@@ -270,17 +277,24 @@ public class AdActivity extends Activity implements
                         view.evaluateJavascript(
                             "(function(){" +
                             "if(typeof window.__adMute==='function')return;" +
-                            "var _m=false,_O=window.AudioContext||window.webkitAudioContext;" +
+                            "var _m=false,_p=false,_O=window.AudioContext||window.webkitAudioContext;" +
                             "if(_O&&!_O.prototype.__adMutePatch){" +
                             "_O.prototype.__adMutePatch=true;" +
                             "var _r=_O.prototype.resume;" +
-                            "_O.prototype.resume=function(){if(_m)return Promise.resolve();return _r.apply(this,arguments);};" +
+                            "_O.prototype.resume=function(){if(_m||_p)return Promise.resolve();return _r.apply(this,arguments);};" +
                             "}" +
                             "window.__adMute=function(m){" +
                             "_m=m;" +
-                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});" +
-                            "try{if(window.Howler){window.Howler.mute(m);" +
-                            "if(Howler.ctx)m?Howler.ctx.suspend():Howler.ctx.resume();}" +
+                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m||_p;});" +
+                            "try{if(window.Howler){window.Howler.mute(m||_p);" +
+                            "if(Howler.ctx)m?Howler.ctx.suspend():(_p?null:Howler.ctx.resume());}" +
+                            "}catch(e){}" +
+                            "};" +
+                            "window.__adPause=function(p){" +
+                            "_p=p;" +
+                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=p||_m;});" +
+                            "try{if(window.Howler){window.Howler.mute(p||_m);" +
+                            "if(Howler.ctx)p?Howler.ctx.suspend():(_m?null:Howler.ctx.resume());}" +
                             "}catch(e){}" +
                             "};" +
                             "})()", null);
@@ -328,8 +342,11 @@ public class AdActivity extends Activity implements
             public void onExpanded()
             {
                 Log.d(TAG, "popup.onExpanded — pausing video and timer, hiding close button");
-                if (isPlayable) { if (webView != null) webView.onPause(); }
-                else if (videoPlayer != null) { videoPlayer.pause(); }
+                if (isPlayable && webView != null) {
+                    webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
+                    webView.pauseTimers();
+                    webView.onPause();
+                } else if (videoPlayer != null) { videoPlayer.pause(); }
                 if (timerManager != null) timerManager.pause();
                 if (!config.isFlowB) uiManager.hideCloseButton(); // Flow B: corner button stays visible (covered by store sheet)
             }
@@ -346,8 +363,11 @@ public class AdActivity extends Activity implements
                     // doesn't fire (e.g. store fails to open silently). onResume will also
                     // resume on normal return, which is a harmless no-op on an already-playing video.
                     if (!isFinishing()) {
-                        if (isPlayable) { if (webView != null) webView.onResume(); }
-                        else if (videoPlayer != null) { videoPlayer.resume(); }
+                        if (isPlayable && webView != null) {
+                            webView.onResume();
+                            webView.resumeTimers();
+                            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(false);", null);
+                        } else if (videoPlayer != null) { videoPlayer.resume(); }
                     }
                     if (!isFinishing() && timerManager != null) timerManager.resume();
                 }
@@ -450,6 +470,12 @@ public class AdActivity extends Activity implements
         if (audioManager != null) audioManager.release();
         if (callback != null) callback.onAdFinished(success);
         callback = null;
+        if (isPlayable && webView != null) {
+            // Kill the JS engine immediately — eliminates ghost audio during the slide-out animation.
+            // onDestroy() calls webView.destroy() but fires after the transition completes (~300ms).
+            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
+            webView.loadUrl("about:blank");
+        }
         finish();
         overridePendingTransition(0, R.anim.slide_out_bottom);
     }
@@ -467,6 +493,10 @@ public class AdActivity extends Activity implements
         if (audioManager != null) audioManager.release();
         if (callback != null) callback.onAdFailed(reason);
         callback = null;
+        if (isPlayable && webView != null) {
+            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
+            webView.loadUrl("about:blank");
+        }
         finish();
         overridePendingTransition(0, R.anim.slide_out_bottom);
     }
@@ -632,9 +662,16 @@ public class AdActivity extends Activity implements
     @Override
     protected void onPause() {
         super.onPause();
+        if (noisyAudioReceiver != null) {
+            unregisterReceiver(noisyAudioReceiver);
+            noisyAudioReceiver = null;
+        }
         Log.d(TAG, "onPause — suspending video and pausing timer");
-        if (isPlayable) { if (webView != null) webView.onPause(); }
-        else if (videoPlayer != null) { videoPlayer.suspend(); }
+        if (isPlayable && webView != null) {
+            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
+            webView.pauseTimers();
+            webView.onPause();
+        } else if (videoPlayer != null) { videoPlayer.suspend(); }
         if (timerManager != null) timerManager.pause();
     }
 
@@ -654,10 +691,32 @@ public class AdActivity extends Activity implements
         // onPlayOverlayResult() handles resume when the overlay is dismissed.
         if (!popupExpanded && !isFinishing() && timerManager != null) {
             resumingFromPlayOverlay = false;
-            if (isPlayable) { if (webView != null) webView.onResume(); }
-            else if (videoPlayer != null) { videoPlayer.resume(); }
+            if (isPlayable && webView != null) {
+                webView.onResume();
+                webView.resumeTimers();
+                webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(false);", null);
+            } else if (videoPlayer != null) { videoPlayer.resume(); }
             timerManager.resume();
         }
+
+        // Register AUDIO_BECOMING_NOISY receiver — active only while in foreground.
+        // Headphone unplug fires this broadcast rather than an audio focus event.
+        noisyAudioReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context ctx, android.content.Intent intent) {
+                if (!android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) return;
+                Log.d(TAG, "onBecomingNoisy — audio output changed, pausing ad audio");
+                pausedByAudioFocus = true;
+                if (isPlayable && webView != null) {
+                    webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
+                    webView.pauseTimers();
+                    webView.onPause();
+                } else if (videoPlayer != null) { videoPlayer.pause(); }
+                if (timerManager != null) timerManager.pause();
+            }
+        };
+        registerReceiver(noisyAudioReceiver,
+            new android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY));
     }
 
     @Override
@@ -700,29 +759,38 @@ public class AdActivity extends Activity implements
 
     /**
      * Injected as the first child of &lt;head&gt; via loadDataWithBaseURL before any game scripts run.
-     * Patches AudioContext.prototype.resume to be a no-op while muted — prevents game touch handlers
-     * from resuming the context after we suspend it. Also patches the constructor to track instances
-     * and exposes window.__adMute(bool) for the native mute button.
+     * Two independent mute flags:
+     *   _m — user mute button (window.__adMute)
+     *   _p — lifecycle/focus pause (window.__adPause): phone calls, app-switch, popup expand
+     * AudioContext.prototype.resume is a no-op when either flag is active, preventing the game's
+     * own touch-driven resume() calls from overriding our pause.
      * Falls back to muting &lt;audio&gt;/&lt;video&gt; elements and Howler.js if present.
      */
     private static final String MUTE_PATCHER_JS =
         "(function(){" +
-        "var _c=[],_m=false,_O=window.AudioContext||window.webkitAudioContext;" +
+        "var _c=[],_m=false,_p=false;" +
+        "var _O=window.AudioContext||window.webkitAudioContext;" +
         "if(_O){" +
         "var _r=_O.prototype.resume;" +
         "_O.prototype.resume=function(){" +
-        "if(_m)return Promise.resolve();" +
+        "if(_m||_p)return Promise.resolve();" +
         "return _r.apply(this,arguments);" +
         "};" +
-        "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m)c.suspend();}catch(e){}return c;};" +
+        "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m||_p)c.suspend();}catch(e){}return c;};" +
         "_P.prototype=_O.prototype;" +
         "window.AudioContext=window.webkitAudioContext=_P;" +
         "}" +
         "window.__adMute=function(m){" +
         "_m=m;" +
-        "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});" +
-        "_c.forEach(function(c){try{m?c.suspend():c.resume();}catch(e){}});" +
-        "try{if(window.Howler)window.Howler.mute(m);}catch(e){}" +
+        "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m||_p;});" +
+        "_c.forEach(function(c){try{m?c.suspend():(_p?null:c.resume());}catch(e){}});" +
+        "try{if(window.Howler)window.Howler.mute(m||_p);}catch(e){}" +
+        "};" +
+        "window.__adPause=function(p){" +
+        "_p=p;" +
+        "document.querySelectorAll('audio,video').forEach(function(el){el.muted=p||_m;});" +
+        "_c.forEach(function(c){try{p?c.suspend():(_m?null:c.resume());}catch(e){}});" +
+        "try{if(window.Howler)window.Howler.mute(p||_m);}catch(e){}" +
         "};" +
         "})()";
 

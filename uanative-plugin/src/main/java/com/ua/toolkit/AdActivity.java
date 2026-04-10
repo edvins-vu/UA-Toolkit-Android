@@ -3,7 +3,6 @@ package com.ua.toolkit;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.net.Uri;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
@@ -261,35 +260,30 @@ public class AdActivity extends Activity implements
                 webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
                 webView.setWebViewClient(new WebViewClient() {
                     @Override
-                    public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                        // Intercept the main HTML file and prepend the mute patcher script inline.
-                        // evaluateJavascript() from onPageStarted is async — the game's own scripts
-                        // run first, so the AudioContext constructor patch arrives too late.
-                        // Injecting directly into the HTML content guarantees the patch executes
-                        // before any page JS and correctly intercepts all AudioContext instances.
-                        String scheme = request.getUrl().getScheme();
-                        String path   = request.getUrl().getPath();
-                        if ("file".equals(scheme) && path != null && path.endsWith(".html")) {
-                            try {
-                                java.io.File file = new java.io.File(path);
-                                if (!file.exists()) return null;
-                                byte[] raw = readAllBytes(new java.io.FileInputStream(file));
-                                String html = new String(raw, "UTF-8");
-                                String patched = "<script>" + MUTE_PATCHER_JS + "</script>" + html;
-                                return new android.webkit.WebResourceResponse(
-                                    "text/html", "UTF-8",
-                                    new java.io.ByteArrayInputStream(patched.getBytes("UTF-8")));
-                            } catch (Exception e) {
-                                Log.e(TAG, "shouldInterceptRequest: mute patcher injection failed — " + e.getMessage());
-                                return null; // fall through to normal WebView loading
-                            }
-                        }
-                        return null;
-                    }
-                    @Override
                     public void onPageFinished(WebView view, String url) {
                         if (pageLoaded) return;
                         pageLoaded = true;
+                        // Safety net: if loadDataWithBaseURL somehow served unpatched content,
+                        // window.__adMute will be undefined. Define a lite version that patches
+                        // prototype.resume (applies to all existing AudioContext instances) and
+                        // handles Howler/media elements. No-ops immediately if already defined.
+                        view.evaluateJavascript(
+                            "(function(){" +
+                            "if(typeof window.__adMute==='function')return;" +
+                            "var _m=false,_O=window.AudioContext||window.webkitAudioContext;" +
+                            "if(_O&&!_O.prototype.__adMutePatch){" +
+                            "_O.prototype.__adMutePatch=true;" +
+                            "var _r=_O.prototype.resume;" +
+                            "_O.prototype.resume=function(){if(_m)return Promise.resolve();return _r.apply(this,arguments);};" +
+                            "}" +
+                            "window.__adMute=function(m){" +
+                            "_m=m;" +
+                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});" +
+                            "try{if(window.Howler){window.Howler.mute(m);" +
+                            "if(Howler.ctx)m?Howler.ctx.suspend():Howler.ctx.resume();}" +
+                            "}catch(e){}" +
+                            "};" +
+                            "})()", null);
                         onContentReady();
                     }
                     @Override
@@ -415,13 +409,27 @@ public class AdActivity extends Activity implements
         };
         if (isPlayable) {
             if (webView == null) return; // defensive: WebView init failed silently
-            // Convert the raw filesystem path to a proper file:// URI.
-            // Uri.fromFile() produces "file:///data/..." correctly regardless of leading slash.
-            // Calling loadUrl() with a bare path (no scheme) causes WebView to misinterpret it
-            // as a relative or HTTP URL and fail silently on modern Android.
-            String htmlUri = Uri.fromFile(new java.io.File(config.videoPath)).toString();
-            Log.d(TAG, "startAd (playable) — loading: " + htmlUri);
-            webView.loadUrl(htmlUri);
+            try {
+                java.io.File htmlFile = new java.io.File(config.videoPath);
+                byte[] raw = readAllBytes(new java.io.FileInputStream(htmlFile));
+                String html = new String(raw, "UTF-8");
+                // Inject mute patcher as first child of <head> — before any game scripts.
+                // Injecting inside <head> avoids placing a <script> before <!DOCTYPE>,
+                // which would trigger quirks mode in WebView.
+                String scriptTag = "<script>" + MUTE_PATCHER_JS + "</script>";
+                int headIdx = html.toLowerCase().indexOf("<head>");
+                String patched = headIdx >= 0
+                    ? html.substring(0, headIdx + 6) + scriptTag + html.substring(headIdx + 6)
+                    : scriptTag + html; // fallback for documents with no <head>
+                // Base URL = parent directory so relative sub-resource paths (JS, images, CSS)
+                // resolve correctly — same behaviour as loadUrl("file:///...").
+                String baseUrl = "file://" + htmlFile.getParent() + "/";
+                Log.d(TAG, "startAd (playable) — loadDataWithBaseURL base=" + baseUrl);
+                webView.loadDataWithBaseURL(baseUrl, patched, "text/html", "UTF-8", null);
+            } catch (Exception e) {
+                failAd("Playable HTML read/patch failed: " + e.getMessage());
+                return;
+            }
             prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
         } else {
             videoPlayer.load(config.videoPath);
@@ -691,15 +699,21 @@ public class AdActivity extends Activity implements
     // --- Playable audio helpers ---
 
     /**
-     * Injected inline into the HTML content via shouldInterceptRequest before any page scripts run.
-     * Patches the AudioContext constructor to track every instance the game creates, and exposes
-     * window.__adMute(bool) so the native mute button can suspend/resume Web Audio API audio.
-     * Falls back to muting <audio>/<video> elements and Howler.js if present.
+     * Injected as the first child of &lt;head&gt; via loadDataWithBaseURL before any game scripts run.
+     * Patches AudioContext.prototype.resume to be a no-op while muted — prevents game touch handlers
+     * from resuming the context after we suspend it. Also patches the constructor to track instances
+     * and exposes window.__adMute(bool) for the native mute button.
+     * Falls back to muting &lt;audio&gt;/&lt;video&gt; elements and Howler.js if present.
      */
     private static final String MUTE_PATCHER_JS =
         "(function(){" +
         "var _c=[],_m=false,_O=window.AudioContext||window.webkitAudioContext;" +
         "if(_O){" +
+        "var _r=_O.prototype.resume;" +
+        "_O.prototype.resume=function(){" +
+        "if(_m)return Promise.resolve();" +
+        "return _r.apply(this,arguments);" +
+        "};" +
         "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m)c.suspend();}catch(e){}return c;};" +
         "_P.prototype=_O.prototype;" +
         "window.AudioContext=window.webkitAudioContext=_P;" +

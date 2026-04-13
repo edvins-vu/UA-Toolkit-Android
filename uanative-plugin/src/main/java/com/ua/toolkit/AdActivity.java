@@ -474,14 +474,18 @@ public class AdActivity extends Activity implements
         if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
+        // Destroy the WebView renderer BEFORE firing the callback so that Chromium's implicit
+        // audio focus (held by the HTML5 game's Web Audio / Howler) is fully released before
+        // the next ad SDK (e.g. MaxSDK) requests focus. Previously webView.destroy() was deferred
+        // to onDestroy() (~300ms later via the slide-out animation), which left Chromium's focus
+        // active when the next ad tried to start — causing its countdown timer to never fire.
+        if (isPlayable && webView != null) {
+            webView.stopLoading();
+            webView.destroy();
+            webView = null;
+        }
         if (callback != null) callback.onAdFinished(success);
         callback = null;
-        if (isPlayable && webView != null) {
-            // Kill the JS engine immediately — eliminates ghost audio during the slide-out animation.
-            // onDestroy() calls webView.destroy() but fires after the transition completes (~300ms).
-            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
-            webView.loadUrl("about:blank");
-        }
         finish();
         overridePendingTransition(0, R.anim.slide_out_bottom);
     }
@@ -497,12 +501,13 @@ public class AdActivity extends Activity implements
         if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
+        if (isPlayable && webView != null) {
+            webView.stopLoading();
+            webView.destroy();
+            webView = null;
+        }
         if (callback != null) callback.onAdFailed(reason);
         callback = null;
-        if (isPlayable && webView != null) {
-            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
-            webView.loadUrl("about:blank");
-        }
         finish();
         overridePendingTransition(0, R.anim.slide_out_bottom);
     }

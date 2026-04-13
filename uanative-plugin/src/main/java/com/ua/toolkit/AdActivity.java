@@ -114,7 +114,13 @@ public class AdActivity extends Activity implements
         // Reapply earned UI state after manager setup (restoration path)
         if (isFullyWatched)        { uiManager.showRewardEarned(); uiManager.showCloseButton(); }
         else if (closeButtonEarned) { uiManager.showCloseButton(); }
-        if (config.isFlowB && savedInstanceState != null) evaluateFlowBState();
+        if (config.isFlowB && savedInstanceState != null) {
+            boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
+            if (engagementMet && hasVisitedStore) {
+                uiManager.setCornerButtonState(AdUIManager.CornerButtonState.CLOSE);
+            }
+            // If either condition not yet met, OPEN_STORE is already the default — no action needed.
+        }
 
         overridePendingTransition(R.anim.slide_in_bottom, 0);
         registerBackCallback();
@@ -521,7 +527,6 @@ public class AdActivity extends Activity implements
         } else if (state == AdUIManager.CornerButtonState.CLOSE) {
             finishWithResult(true); // reward always granted in Flow B close
         }
-        // FINISH_VIDEO state: button is disabled — tap should not reach here
     }
     @Override public void onMuteClicked() {
         audioManager.toggleMute();
@@ -798,8 +803,11 @@ public class AdActivity extends Activity implements
         java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
         byte[] chunk = new byte[8192];
         int n;
-        while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
-        is.close();
+        try {
+            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
+        } finally {
+            is.close();
+        }
         return buf.toByteArray();
     }
 }

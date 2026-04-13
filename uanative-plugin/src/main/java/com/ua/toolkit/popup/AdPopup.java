@@ -358,9 +358,12 @@ public class AdPopup
 
         // Extract Adjust token from clickUrl and embed as referrer for attribution.
         // Google Play's Install Referrer API delivers it to the installed app on first launch.
+        // Guard: if token extraction fails (null clickUrl, no path segment, parse error) omit the
+        // tracker param rather than forwarding the literal string "adjust_tracker=null" to Adjust.
         String tracker = extractAdjustToken(_config != null ? _config.clickUrl : null);
-        String source = "adjust_store";
-        String rawReferrer = "adjust_tracker=" + tracker + "&utm_source=" + source;
+        String rawReferrer = tracker != null
+                ? "adjust_tracker=" + tracker + "&utm_source=adjust_store"
+                : "utm_source=adjust_store";
         // Encode the entire referrer string for the URL
         String encodedReferrer = Uri.encode(rawReferrer);
 

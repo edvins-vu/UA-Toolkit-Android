@@ -11,16 +11,11 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.WindowManager;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.widget.FrameLayout;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
 import com.ua.toolkit.display.AdAudioManager;
+import com.ua.toolkit.display.AdPlayableController;
 import com.ua.toolkit.display.AdTimerManager;
 import com.ua.toolkit.display.AdUIManager;
 import com.ua.toolkit.display.AdVideoPlayer;
@@ -43,9 +38,8 @@ public class AdActivity extends Activity implements
     private AdTimerManager timerManager;
     private AdPopup popup;
     private AdConfig config;
+    private AdPlayableController playableController;
     private boolean isPlayable = false;
-    private boolean pageLoaded = false; // guards WebViewClient.onPageFinished double-fire
-    private WebView webView = null;
     private boolean isFullyWatched = false;
     private boolean resultSent = false;
     private boolean pausedByAudioFocus = false;
@@ -112,7 +106,7 @@ public class AdActivity extends Activity implements
         }
 
         // Reapply earned UI state after manager setup (restoration path)
-        if (isFullyWatched)        { uiManager.showRewardEarned(); uiManager.showCloseButton(); }
+        if (isFullyWatched)         { uiManager.showRewardEarned(); uiManager.showCloseButton(); }
         else if (closeButtonEarned) { uiManager.showCloseButton(); }
         if (config.isFlowB && savedInstanceState != null) {
             boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
@@ -135,6 +129,8 @@ public class AdActivity extends Activity implements
         if (!isPlayable && popup != null) popup.handleVideoTap();
     }
 
+    // --- Setup helpers ---
+
     private void lockOrientationToCurrentRotation() {
         // Game is landscape-only — allow sensor-driven switching between LANDSCAPE and REVERSE_LANDSCAPE
         // so the ad follows 180° device flips without ever snapping to portrait.
@@ -155,50 +151,10 @@ public class AdActivity extends Activity implements
 
     private void parseIntentConfig() {
         isPlayable = getIntent().getBooleanExtra("IS_PLAYABLE", false);
-        config = new AdConfig(
-                // Core
-                getIntent().getStringExtra("VIDEO_PATH"),
-                getIntent().getStringExtra("CLICK_URL"),
-                getIntent().getBooleanExtra("IS_REWARDED", false),
-                getIntent().getBooleanExtra("IS_FLOW_B", false),
-                getIntent().getStringExtra("BUNDLE_ID"),
-
-                // Timing
-                getIntent().getIntExtra("CLOSE_BUTTON_DELAY", -1),
-                getIntent().getIntExtra("POPUP_PEEK_DELAY", -1),
-                getIntent().getIntExtra("SKIP_BUTTON_DELAY", -1),
-                getIntent().getIntExtra("PULSE_START_DELAY", -1),
-
-                // GET button
-                getIntent().getStringExtra("GET_BUTTON_TEXT"),
-                getIntent().getStringExtra("GET_BUTTON_COLOR"),
-                getIntent().getStringExtra("GET_BUTTON_TEXT_COLOR"),
-                getIntent().getIntExtra("GET_BUTTON_WIDTH_DP", -1),
-                getIntent().getIntExtra("GET_BUTTON_HEIGHT_DP", -1),
-                getIntent().getIntExtra("GET_BUTTON_TEXT_SIZE_SP", -1),
-                getIntent().getIntExtra("GET_BUTTON_CORNER_DP", -1),
-
-                // Popup card
-                getIntent().getStringExtra("CARD_BG_COLOR"),
-                getIntent().getIntExtra("CARD_CORNER_DP", -1),
-
-                // Controls
-                getIntent().getBooleanExtra("DISABLE_MUTE_BUTTON", false),
-                getIntent().getBooleanExtra("DISABLE_SKIP_BUTTON", false),
-                getIntent().getBooleanExtra("DISABLE_PULSE", false),
-                getIntent().getBooleanExtra("DISABLE_POPUP_BACKGROUND", false),
-
-                // Reward texts
-                getIntent().getStringExtra("REWARD_COUNTDOWN_TEXT"),
-                getIntent().getStringExtra("REWARD_EARNED_TEXT"),
-                getIntent().getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
-                getIntent().getIntExtra("REWARD_TEXT_SIZE_SP", -1),
-                getIntent().getStringExtra("REWARD_TEXT_COLOR"),
-                getIntent().getStringExtra("OPEN_STORE_BUTTON_TEXT")
-        );
+        config = AdConfig.fromIntent(getIntent());
     }
 
-    private void initializeManagers() {
+    private void initUIManager() {
         uiManager = new AdUIManager(this, this, config.isRewarded,
                 config.rewardCountdownText, config.rewardEarnedText);
         uiManager.setDisableMuteButton(config.disableMuteButton);
@@ -211,6 +167,11 @@ public class AdActivity extends Activity implements
         uiManager.setOpenStoreButtonText(config.openStoreButtonText);
         uiManager.setupUI();
         uiManager.setupFullscreen();
+    }
+
+    private void initializeManagers() {
+        initUIManager();
+
         audioManager = new AdAudioManager(this);
         audioManager.setFocusChangeListener(new AdAudioManager.FocusChangeListener()
         {
@@ -218,11 +179,7 @@ public class AdActivity extends Activity implements
             public void onAudioFocusPause()
             {
                 pausedByAudioFocus = true;
-                if (isPlayable && webView != null) {
-                    webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
-                    webView.pauseTimers();
-                    webView.onPause();
-                } else if (videoPlayer != null) { videoPlayer.pause(); }
+                pauseContent();
                 if (timerManager != null) timerManager.pause();
             }
             @Override
@@ -232,11 +189,7 @@ public class AdActivity extends Activity implements
                         && (popup == null || !popup.isExpanded()))
                 {
                     pausedByAudioFocus = false;
-                    if (isPlayable && webView != null) {
-                        webView.onResume();
-                        webView.resumeTimers();
-                        webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(false);", null);
-                    } else if (videoPlayer != null) { videoPlayer.resume(); }
+                    resumeContent();
                     timerManager.resume();
                 }
             }
@@ -250,73 +203,9 @@ public class AdActivity extends Activity implements
                 ((android.view.ViewGroup) videoViewPlaceholder.getParent()).removeView(videoViewPlaceholder);
             }
             try {
-                webView = new WebView(this);
-                WebSettings ws = webView.getSettings();
-                ws.setJavaScriptEnabled(true);
-                ws.setDomStorageEnabled(true);
-                ws.setDatabaseEnabled(true);
-                ws.setMediaPlaybackRequiresUserGesture(false);
-                // setAllowFileAccess — required to load cached HTML via file:// URI on API 30+.
-                // Without it the WebView throws a SecurityException on modern Android.
-                ws.setAllowFileAccess(true);
-                // setAllowUniversalAccessFromFileURLs — required for HTML5 games that reference
-                // sub-resources (JS bundles, CSS, images) via relative paths from a cached index.html.
-                // Without it, file:// origins are sandboxed and cross-file reads are blocked.
-                //
-                // Security trade-off: this setting permits any file:// page to read any other file://
-                // path accessible to the app's UID. The risk is accepted because:
-                //   1. HTML content is downloaded exclusively from our own ad servers.
-                //   2. UASDKVideoCache validates Content-Length and uses atomic rename — no partial writes.
-                //   3. The WebView has no internet access beyond what the HTML itself initiates.
-                // Do NOT enable this for WebViews that load third-party or user-supplied URLs.
-                ws.setAllowUniversalAccessFromFileURLs(true);
-                webView.addJavascriptInterface(new AdJsBridge(this), "AdBridge");
-                webView.setWebViewClient(new WebViewClient() {
-                    @Override
-                    public void onPageFinished(WebView view, String url) {
-                        if (pageLoaded) return;
-                        pageLoaded = true;
-                        // Safety net: if loadDataWithBaseURL somehow served unpatched content,
-                        // window.__adMute will be undefined. Define a lite version that patches
-                        // prototype.resume (applies to all existing AudioContext instances) and
-                        // handles Howler/media elements. No-ops immediately if already defined.
-                        view.evaluateJavascript(
-                            "(function(){" +
-                            "if(typeof window.__adMute==='function')return;" +
-                            "var _m=false,_p=false,_O=window.AudioContext||window.webkitAudioContext;" +
-                            "if(_O&&!_O.prototype.__adMutePatch){" +
-                            "_O.prototype.__adMutePatch=true;" +
-                            "var _r=_O.prototype.resume;" +
-                            "_O.prototype.resume=function(){if(_m||_p)return Promise.resolve();return _r.apply(this,arguments);};" +
-                            "}" +
-                            "window.__adMute=function(m){" +
-                            "_m=m;" +
-                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m||_p;});" +
-                            "try{if(window.Howler){window.Howler.mute(m||_p);" +
-                            "if(Howler.ctx)m?Howler.ctx.suspend():(_p?null:Howler.ctx.resume());}" +
-                            "}catch(e){}" +
-                            "};" +
-                            "window.__adPause=function(p){" +
-                            "_p=p;" +
-                            "document.querySelectorAll('audio,video').forEach(function(el){el.muted=p||_m;});" +
-                            "try{if(window.Howler){window.Howler.mute(p||_m);" +
-                            "if(Howler.ctx)p?Howler.ctx.suspend():(_m?null:Howler.ctx.resume());}" +
-                            "}catch(e){}" +
-                            "};" +
-                            "})()", null);
-                        onContentReady();
-                    }
-                    @Override
-                    public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                        if (!req.isForMainFrame()) return;
-                        failAd("WebView error: " + (err != null ? err.getDescription() : "unknown"));
-                    }
-                });
-                FrameLayout.LayoutParams matchParent = new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
-                uiManager.getRootLayout().addView(webView, 0, matchParent);
-                // loadUrl is deferred to startAd() so it runs after all managers and popup are fully
-                // wired up — mirrors the video path and gives the watchdog a clean start point.
+                playableController = new AdPlayableController(
+                        this, uiManager.getRootLayout(), new AdJsBridge(this),
+                        this::onContentReady, this::failAd);
             } catch (Exception e) {
                 failAd("WebView initialization failed: " + e.getMessage());
                 return;
@@ -324,70 +213,13 @@ public class AdActivity extends Activity implements
         } else {
             videoPlayer = new AdVideoPlayer(uiManager.getVideoView(), this);
         }
+
         // Timer uses elapsed-time countdown for both interstitial and playable.
         // For rewarded playable, reward is earned when closeButtonDelay elapses (engagement gate);
         // no countdown UI is shown for playables to avoid overlapping the HTML game content.
         timerManager = new AdTimerManager(this, config.closeButtonDelay, config.isRewarded, isPlayable);
 
-        popup = new AdPopup(this, uiManager.getRootLayout(), new AdPopup.Listener()
-        {
-            @Override
-            public void onPeeked() { }
-
-            @Override
-            public void onDismissed()
-            {
-                // Playable reward gate: timer elapsed (closeButtonEarned), not video completion.
-                boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
-                boolean success = config.isRewarded ? engagementMet : true;
-                Log.d(TAG, "popup.onDismissed — success=" + success + " isPlayable=" + isPlayable
-                        + " closeButtonEarned=" + closeButtonEarned + " isFullyWatched=" + isFullyWatched);
-                finishWithResult(success);
-            }
-
-            @Override
-            public void onExpanded()
-            {
-                Log.d(TAG, "popup.onExpanded — pausing video and timer, hiding close button");
-                if (isPlayable && webView != null) {
-                    webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
-                    webView.pauseTimers();
-                    webView.onPause();
-                } else if (videoPlayer != null) { videoPlayer.pause(); }
-                if (timerManager != null) timerManager.pause();
-                if (!config.isFlowB) uiManager.hideCloseButton(); // Flow B: corner button stays visible (covered by store sheet)
-            }
-
-            @Override
-            public void onCollapsed()
-            {
-                hasVisitedStore = true;
-                if (config.isFlowB) evaluateFlowBState();
-                Log.d(TAG, "popup.onCollapsed — resumingFromPlayOverlay=" + resumingFromPlayOverlay + " closeButtonEarned=" + closeButtonEarned);
-                if (!resumingFromPlayOverlay)
-                {
-                    // StoreOpener fallback — resume preemptively in case activity lifecycle
-                    // doesn't fire (e.g. store fails to open silently). onResume will also
-                    // resume on normal return, which is a harmless no-op on an already-playing video.
-                    if (!isFinishing()) {
-                        if (isPlayable && webView != null) {
-                            webView.onResume();
-                            webView.resumeTimers();
-                            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(false);", null);
-                        } else if (videoPlayer != null) { videoPlayer.resume(); }
-                    }
-                    if (!isFinishing() && timerManager != null) timerManager.resume();
-                }
-                if (closeButtonEarned || isFullyWatched) uiManager.showCloseButton();
-            }
-
-            @Override
-            public void onAdClicked()
-            {
-                Log.d(TAG, "popup.onAdClicked — firing callback");
-                if (callback != null) callback.onAdClicked();
-            }
-        });
+        popup = new AdPopup(this, uiManager.getRootLayout(), new PopupEventHandler());
         popup.attach(config);
 
         // Once insets are known, push them to AdPopup so cards sit above the navigation bar.
@@ -396,6 +228,84 @@ public class AdActivity extends Activity implements
             if (popup != null) popup.applyInsets(bottomInset, rightInset);
         });
     }
+
+    // --- Content helpers ---
+
+    /** Pauses HTML game or video (non-lifecycle: audio focus, popup expand, noisy receiver). */
+    private void pauseContent() {
+        if (isPlayable) {
+            if (playableController != null) playableController.pause();
+        } else if (videoPlayer != null) {
+            videoPlayer.pause();
+        }
+    }
+
+    /** Resumes HTML game or video. */
+    private void resumeContent() {
+        if (isPlayable) {
+            if (playableController != null) playableController.resume();
+        } else if (videoPlayer != null) {
+            videoPlayer.resume();
+        }
+    }
+
+    /** True if the ad outcome counts as a successful engagement (reward granted for rewarded ads). */
+    private boolean resolveSuccess() {
+        boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
+        return config.isRewarded ? engagementMet : true;
+    }
+
+    // --- Popup event handler ---
+
+    private class PopupEventHandler implements AdPopup.Listener
+    {
+        @Override public void onPeeked() { }
+
+        @Override
+        public void onDismissed()
+        {
+            boolean success = resolveSuccess();
+            Log.d(TAG, "popup.onDismissed — success=" + success + " isPlayable=" + isPlayable
+                    + " closeButtonEarned=" + closeButtonEarned + " isFullyWatched=" + isFullyWatched);
+            finishWithResult(success);
+        }
+
+        @Override
+        public void onExpanded()
+        {
+            Log.d(TAG, "popup.onExpanded — pausing video and timer, hiding close button");
+            pauseContent();
+            if (timerManager != null) timerManager.pause();
+            if (!config.isFlowB) uiManager.hideCloseButton(); // Flow B: corner button stays visible (covered by store sheet)
+        }
+
+        @Override
+        public void onCollapsed()
+        {
+            hasVisitedStore = true;
+            if (config.isFlowB) evaluateFlowBState();
+            Log.d(TAG, "popup.onCollapsed — resumingFromPlayOverlay=" + resumingFromPlayOverlay
+                    + " closeButtonEarned=" + closeButtonEarned);
+            if (!resumingFromPlayOverlay)
+            {
+                // StoreOpener fallback — resume preemptively in case activity lifecycle
+                // doesn't fire (e.g. store fails to open silently). onResume will also
+                // resume on normal return, which is a harmless no-op on an already-playing video.
+                if (!isFinishing()) resumeContent();
+                if (!isFinishing() && timerManager != null) timerManager.resume();
+            }
+            if (closeButtonEarned || isFullyWatched) uiManager.showCloseButton();
+        }
+
+        @Override
+        public void onAdClicked()
+        {
+            Log.d(TAG, "popup.onAdClicked — firing callback");
+            if (callback != null) callback.onAdClicked();
+        }
+    }
+
+    // --- Ad lifecycle ---
 
     private void notifyAdStarted() {
         if (adStartedFired) return;
@@ -408,13 +318,8 @@ public class AdActivity extends Activity implements
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         if (isPlayable) {
             uiManager.showPlayableControls();
-            // Re-apply mute state in case the user toggled before onPageFinished
-            if (webView != null && audioManager.isMuted()) {
-                webView.evaluateJavascript(
-                    "if(typeof window.__adMute==='function')window.__adMute(true);" +
-                    "else document.querySelectorAll('audio,video').forEach(function(el){el.muted=true;});",
-                    null);
-            }
+            // Re-apply mute state in case the user toggled before onPageFinished fired.
+            if (playableController != null) playableController.applyInitialMute(audioManager.isMuted());
         }
         notifyAdStarted();
         timerManager.start();
@@ -435,33 +340,17 @@ public class AdActivity extends Activity implements
             failAd(msg);
         };
         if (isPlayable) {
-            if (webView == null) return; // defensive: WebView init failed silently
+            if (playableController == null) return; // defensive: WebView init failed silently
             try {
-                java.io.File htmlFile = new java.io.File(config.videoPath);
-                byte[] raw = readAllBytes(new java.io.FileInputStream(htmlFile));
-                String html = new String(raw, "UTF-8");
-                // Inject mute patcher as first child of <head> — before any game scripts.
-                // Injecting inside <head> avoids placing a <script> before <!DOCTYPE>,
-                // which would trigger quirks mode in WebView.
-                String scriptTag = "<script>" + MUTE_PATCHER_JS + "</script>";
-                int headIdx = html.toLowerCase().indexOf("<head>");
-                String patched = headIdx >= 0
-                    ? html.substring(0, headIdx + 6) + scriptTag + html.substring(headIdx + 6)
-                    : scriptTag + html; // fallback for documents with no <head>
-                // Base URL = parent directory so relative sub-resource paths (JS, images, CSS)
-                // resolve correctly — same behaviour as loadUrl("file:///...").
-                String baseUrl = "file://" + htmlFile.getParent() + "/";
-                Log.d(TAG, "startAd (playable) — loadDataWithBaseURL base=" + baseUrl);
-                webView.loadDataWithBaseURL(baseUrl, patched, "text/html", "UTF-8", null);
+                playableController.load(config.videoPath);
             } catch (Exception e) {
                 failAd("Playable HTML read/patch failed: " + e.getMessage());
                 return;
             }
-            prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
         } else {
             videoPlayer.load(config.videoPath);
-            prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
         }
+        prepareWatchdog.postDelayed(prepareTimeoutRunnable, PREPARE_TIMEOUT_MS);
     }
 
     private void finishWithResult(boolean success) {
@@ -477,14 +366,8 @@ public class AdActivity extends Activity implements
         if (audioManager != null) audioManager.release();
         // Destroy the WebView renderer BEFORE firing the callback so that Chromium's implicit
         // audio focus (held by the HTML5 game's Web Audio / Howler) is fully released before
-        // the next ad SDK (e.g. MaxSDK) requests focus. Previously webView.destroy() was deferred
-        // to onDestroy() (~300ms later via the slide-out animation), which left Chromium's focus
-        // active when the next ad tried to start — causing its countdown timer to never fire.
-        if (isPlayable && webView != null) {
-            webView.stopLoading();
-            webView.destroy();
-            webView = null;
-        }
+        // the next ad SDK requests focus.
+        if (playableController != null) { playableController.destroy(); playableController = null; }
         if (callback != null) callback.onAdFinished(success);
         callback = null;
         finish();
@@ -502,25 +385,21 @@ public class AdActivity extends Activity implements
         if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
-        if (isPlayable && webView != null) {
-            webView.stopLoading();
-            webView.destroy();
-            webView = null;
-        }
+        if (playableController != null) { playableController.destroy(); playableController = null; }
         if (callback != null) callback.onAdFailed(reason);
         callback = null;
         finish();
         overridePendingTransition(0, R.anim.slide_out_bottom);
     }
 
+    // --- AdUIManager.Listener (continued) ---
+
     @Override public void onCloseClicked() {
         if (config.isFlowB) {
             handleFlowBCornerButtonTap();
             return;
         }
-        // Playable reward gate: timer elapsed (closeButtonEarned), not video completion.
-        boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
-        boolean success = config.isRewarded ? engagementMet : true;
+        boolean success = resolveSuccess();
         Log.d(TAG, "onCloseClicked — isRewarded=" + config.isRewarded + " isPlayable=" + isPlayable
                 + " closeButtonEarned=" + closeButtonEarned + " isFullyWatched=" + isFullyWatched + " success=" + success);
         finishWithResult(success);
@@ -534,18 +413,16 @@ public class AdActivity extends Activity implements
             finishWithResult(true); // reward always granted in Flow B close
         }
     }
+
     @Override public void onMuteClicked() {
         audioManager.toggleMute();
         boolean muted = audioManager.isMuted();
-        if (isPlayable && webView != null) {
-            webView.evaluateJavascript(
-                "(function(m){" +
-                "if(typeof window.__adMute==='function'){window.__adMute(m);}" +
-                "else{document.querySelectorAll('audio,video').forEach(function(el){el.muted=m;});}" +
-                "})(" + muted + ")", null);
-        }
+        if (isPlayable && playableController != null) playableController.applyMute(muted);
         uiManager.updateMuteButton(muted);
     }
+
+    // --- AdVideoPlayer.Listener ---
+
     @Override public void onVideoPrepared(MediaPlayer mp) {
         boolean firstPrepare = !adStartedFired;
         Log.d(TAG, "onVideoPrepared — firstPrepare=" + firstPrepare + " peekDelay=" + config.peekDelay);
@@ -571,6 +448,9 @@ public class AdActivity extends Activity implements
         prepareWatchdog.removeCallbacks(prepareTimeoutRunnable);
         failAd("Video playback error: what=" + what + ", extra=" + extra);
     }
+
+    // --- AdTimerManager.Listener ---
+
     @Override public void onCountdownTick(int rem) {
         if (!config.isRewarded && !closeButtonEarned && (config.closeButtonDelay - rem) >= config.skipButtonDelaySec) {
             uiManager.showSkipButton();
@@ -599,7 +479,10 @@ public class AdActivity extends Activity implements
             if (!uiManager.isSkipButtonVisible()) uiManager.showCloseButton();
         }
     }
+
     @Override public void onRewardTimerTick(int rem) { uiManager.updateRewardTimer(rem); }
+
+    // --- Flow B ---
 
     private void evaluateFlowBState() {
         if (!config.isFlowB) return;
@@ -617,6 +500,8 @@ public class AdActivity extends Activity implements
         // Either flag not yet true: stays OPEN_STORE — no change needed
     }
 
+    // --- Back navigation ---
+
     private void handleBackNavigation() {
         if (config.isFlowB) return; // back is always blocked in Flow B
         boolean closeVisible = uiManager != null && uiManager.isCloseButtonVisible();
@@ -624,10 +509,7 @@ public class AdActivity extends Activity implements
             return;
         }
         if (closeVisible) {
-            // Playable reward gate: timer elapsed (closeButtonEarned), not video completion.
-            boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
-            boolean success = config.isRewarded ? engagementMet : true;
-            finishWithResult(success);
+            finishWithResult(resolveSuccess());
         }
         // Close button not visible: consume silently — ad stays locked open
     }
@@ -659,6 +541,8 @@ public class AdActivity extends Activity implements
         return super.onKeyDown(keyCode, event);
     }
 
+    // --- Activity lifecycle ---
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -678,11 +562,11 @@ public class AdActivity extends Activity implements
             noisyAudioReceiver = null;
         }
         Log.d(TAG, "onPause — suspending video and pausing timer");
-        if (isPlayable && webView != null) {
-            webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
-            webView.pauseTimers();
-            webView.onPause();
-        } else if (videoPlayer != null) { videoPlayer.suspend(); }
+        if (isPlayable) {
+            if (playableController != null) playableController.pause();
+        } else if (videoPlayer != null) {
+            videoPlayer.suspend(); // suspend (not pause) so MediaPlayer releases the decoder surface
+        }
         if (timerManager != null) timerManager.pause();
     }
 
@@ -690,7 +574,8 @@ public class AdActivity extends Activity implements
     protected void onResume() {
         super.onResume();
         boolean popupExpanded = popup != null && popup.isExpanded();
-        Log.d(TAG, "onResume — popupExpanded=" + popupExpanded + " isFinishing=" + isFinishing() + " resumingFromPlayOverlay=" + resumingFromPlayOverlay);
+        Log.d(TAG, "onResume — popupExpanded=" + popupExpanded + " isFinishing=" + isFinishing()
+                + " resumingFromPlayOverlay=" + resumingFromPlayOverlay);
         pausedByAudioFocus = false;
         if (uiManager != null) {
             uiManager.setupFullscreen();
@@ -702,11 +587,7 @@ public class AdActivity extends Activity implements
         // onPlayOverlayResult() handles resume when the overlay is dismissed.
         if (!popupExpanded && !isFinishing() && timerManager != null) {
             resumingFromPlayOverlay = false;
-            if (isPlayable && webView != null) {
-                webView.onResume();
-                webView.resumeTimers();
-                webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(false);", null);
-            } else if (videoPlayer != null) { videoPlayer.resume(); }
+            resumeContent();
             timerManager.resume();
         }
 
@@ -718,11 +599,7 @@ public class AdActivity extends Activity implements
                 if (!android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) return;
                 Log.d(TAG, "onBecomingNoisy — audio output changed, pausing ad audio");
                 pausedByAudioFocus = true;
-                if (isPlayable && webView != null) {
-                    webView.evaluateJavascript("if(typeof window.__adPause==='function')window.__adPause(true);", null);
-                    webView.pauseTimers();
-                    webView.onPause();
-                } else if (videoPlayer != null) { videoPlayer.pause(); }
+                pauseContent();
                 if (timerManager != null) timerManager.pause();
             }
         };
@@ -757,63 +634,12 @@ public class AdActivity extends Activity implements
         if (popup != null) { popup.cancel(); popup = null; }
         if (timerManager != null) timerManager.stop();
         if (audioManager != null) audioManager.release();
-        if (isPlayable && webView != null) { webView.stopLoading(); webView.destroy(); webView = null; }
+        if (playableController != null) { playableController.destroy(); playableController = null; }
         if (videoPlayer != null) videoPlayer.stop();
     }
 
     public static void dismissAd() {
         AdActivity instance = currentInstanceRef != null ? currentInstanceRef.get() : null;
         if (instance != null) instance.runOnUiThread(() -> instance.finishWithResult(false));
-    }
-
-    // --- Playable audio helpers ---
-
-    /**
-     * Injected as the first child of &lt;head&gt; via loadDataWithBaseURL before any game scripts run.
-     * Two independent mute flags:
-     *   _m — user mute button (window.__adMute)
-     *   _p — lifecycle/focus pause (window.__adPause): phone calls, app-switch, popup expand
-     * AudioContext.prototype.resume is a no-op when either flag is active, preventing the game's
-     * own touch-driven resume() calls from overriding our pause.
-     * Falls back to muting &lt;audio&gt;/&lt;video&gt; elements and Howler.js if present.
-     */
-    private static final String MUTE_PATCHER_JS =
-        "(function(){" +
-        "var _c=[],_m=false,_p=false;" +
-        "var _O=window.AudioContext||window.webkitAudioContext;" +
-        "if(_O){" +
-        "var _r=_O.prototype.resume;" +
-        "_O.prototype.resume=function(){" +
-        "if(_m||_p)return Promise.resolve();" +
-        "return _r.apply(this,arguments);" +
-        "};" +
-        "var _P=function(o){var c=new _O(o);_c.push(c);try{if(_m||_p)c.suspend();}catch(e){}return c;};" +
-        "_P.prototype=_O.prototype;" +
-        "window.AudioContext=window.webkitAudioContext=_P;" +
-        "}" +
-        "window.__adMute=function(m){" +
-        "_m=m;" +
-        "document.querySelectorAll('audio,video').forEach(function(el){el.muted=m||_p;});" +
-        "_c.forEach(function(c){try{m?c.suspend():(_p?null:c.resume());}catch(e){}});" +
-        "try{if(window.Howler)window.Howler.mute(m||_p);}catch(e){}" +
-        "};" +
-        "window.__adPause=function(p){" +
-        "_p=p;" +
-        "document.querySelectorAll('audio,video').forEach(function(el){el.muted=p||_m;});" +
-        "_c.forEach(function(c){try{p?c.suspend():(_m?null:c.resume());}catch(e){}});" +
-        "try{if(window.Howler)window.Howler.mute(p||_m);}catch(e){}" +
-        "};" +
-        "})()";
-
-    private static byte[] readAllBytes(java.io.InputStream is) throws java.io.IOException {
-        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
-        byte[] chunk = new byte[8192];
-        int n;
-        try {
-            while ((n = is.read(chunk)) != -1) buf.write(chunk, 0, n);
-        } finally {
-            is.close();
-        }
-        return buf.toByteArray();
     }
 }

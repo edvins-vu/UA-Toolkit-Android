@@ -1,5 +1,6 @@
 package com.ua.toolkit;
 
+import android.content.Intent;
 import android.graphics.Color;
 
 import java.io.File;
@@ -155,6 +156,55 @@ public class AdConfig
         } catch (Exception e) {
             return fallback;
         }
+    }
+
+    /**
+     * Reads all ad configuration fields from an Activity Intent and constructs an AdConfig.
+     * IS_PLAYABLE is NOT read here — it is a runtime flag owned by AdActivity, not a config field.
+     */
+    public static AdConfig fromIntent(Intent intent)
+    {
+        return new AdConfig(
+                // Core
+                intent.getStringExtra("VIDEO_PATH"),
+                intent.getStringExtra("CLICK_URL"),
+                intent.getBooleanExtra("IS_REWARDED", false),
+                intent.getBooleanExtra("IS_FLOW_B", false),
+                intent.getStringExtra("BUNDLE_ID"),
+
+                // Timing
+                intent.getIntExtra("CLOSE_BUTTON_DELAY", -1),
+                intent.getIntExtra("POPUP_PEEK_DELAY", -1),
+                intent.getIntExtra("SKIP_BUTTON_DELAY", -1),
+                intent.getIntExtra("PULSE_START_DELAY", -1),
+
+                // GET button
+                intent.getStringExtra("GET_BUTTON_TEXT"),
+                intent.getStringExtra("GET_BUTTON_COLOR"),
+                intent.getStringExtra("GET_BUTTON_TEXT_COLOR"),
+                intent.getIntExtra("GET_BUTTON_WIDTH_DP", -1),
+                intent.getIntExtra("GET_BUTTON_HEIGHT_DP", -1),
+                intent.getIntExtra("GET_BUTTON_TEXT_SIZE_SP", -1),
+                intent.getIntExtra("GET_BUTTON_CORNER_DP", -1),
+
+                // Popup card
+                intent.getStringExtra("CARD_BG_COLOR"),
+                intent.getIntExtra("CARD_CORNER_DP", -1),
+
+                // Controls
+                intent.getBooleanExtra("DISABLE_MUTE_BUTTON", false),
+                intent.getBooleanExtra("DISABLE_SKIP_BUTTON", false),
+                intent.getBooleanExtra("DISABLE_PULSE", false),
+                intent.getBooleanExtra("DISABLE_POPUP_BACKGROUND", false),
+
+                // Reward texts
+                intent.getStringExtra("REWARD_COUNTDOWN_TEXT"),
+                intent.getStringExtra("REWARD_EARNED_TEXT"),
+                intent.getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
+                intent.getIntExtra("REWARD_TEXT_SIZE_SP", -1),
+                intent.getStringExtra("REWARD_TEXT_COLOR"),
+                intent.getStringExtra("OPEN_STORE_BUTTON_TEXT")
+        );
     }
 
     public boolean isValid()

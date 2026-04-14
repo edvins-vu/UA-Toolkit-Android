@@ -324,9 +324,10 @@ public class AdActivity extends Activity implements
         } else {
             videoPlayer = new AdVideoPlayer(uiManager.getVideoView(), this);
         }
-        // Playable always uses isRewarded=false: no reward countdown UI, timer elapsed = engagement gate.
-        timerManager = new AdTimerManager(this, config.closeButtonDelay,
-                isPlayable ? false : config.isRewarded);
+        // Timer uses elapsed-time countdown for both interstitial and playable.
+        // For rewarded playable, reward is earned when closeButtonDelay elapses (engagement gate);
+        // no countdown UI is shown for playables to avoid overlapping the HTML game content.
+        timerManager = new AdTimerManager(this, config.closeButtonDelay, config.isRewarded, isPlayable);
 
         popup = new AdPopup(this, uiManager.getRootLayout(), new AdPopup.Listener()
         {

@@ -19,6 +19,7 @@ public class AdTimerManager
     private final Listener listener;
     private final int closeButtonDelay;
     private final boolean isRewarded;
+    private final boolean isPlayable;
 
     private long adStartTime;
     private long pauseTime = 0;
@@ -28,12 +29,13 @@ public class AdTimerManager
     private boolean rewardEarned = false;
     private Runnable updateTask;
 
-    public AdTimerManager(Listener listener, int closeButtonDelay, boolean isRewarded)
+    public AdTimerManager(Listener listener, int closeButtonDelay, boolean isRewarded, boolean isPlayable)
     {
         this.handler = new Handler(Looper.getMainLooper());
         this.listener = listener;
         this.closeButtonDelay = closeButtonDelay;
         this.isRewarded = isRewarded;
+        this.isPlayable = isPlayable;
     }
 
     public void start()
@@ -95,14 +97,17 @@ public class AdTimerManager
 
     private void update()
     {
-        // For rewarded ads, always notify so reward timer updates based on video position
-        if (isRewarded)
+        // Rewarded video: poll video position so AdActivity can drive the countdown UI.
+        // Reward is triggered externally when the video completes via markRewardEarned().
+        // Playable rewarded uses the elapsed-time path below — reward is tied to timer elapsed,
+        // not video completion, so it follows the same engagement-gate logic as interstitial.
+        if (isRewarded && !isPlayable)
         {
             listener.onCountdownTick(0);
             return;
         }
 
-        // For interstitial ads, use countdown logic
+        // Interstitial and playable (rewarded or not): elapsed-time countdown.
         if (!closeButtonShown)
         {
             long elapsedMs = System.currentTimeMillis() - adStartTime;
@@ -112,6 +117,8 @@ public class AdTimerManager
             if (elapsedMs >= targetMs)
             {
                 closeButtonShown = true;
+                // Rewarded playable: reward earned when engagement timer elapses (no video completion event).
+                if (isPlayable && isRewarded) rewardEarned = true;
                 listener.onCountdownComplete();
             }
             else

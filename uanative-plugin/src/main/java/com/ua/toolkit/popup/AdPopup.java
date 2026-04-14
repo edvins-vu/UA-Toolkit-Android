@@ -386,7 +386,7 @@ public class AdPopup
             _stage1Card.animate()
                     .translationY(cardOffscreen)
                     .setDuration(_layout.slideOutDurationMs)
-                    .withEndAction(() -> _stage1Card.setVisibility(View.GONE))
+                    .withEndAction(() -> { if (_stage1Card != null) _stage1Card.setVisibility(View.GONE); })
                     .start();
         }
 
@@ -486,6 +486,9 @@ public class AdPopup
         // Slide in from below
         _stage3Card.post(() ->
         {
+            // cancel() posts to _handler but View.post() uses the View's own message queue —
+            // _handler.removeCallbacksAndMessages() cannot cancel this runnable, so guard manually.
+            if (_isCancelled || _stage3Card == null || _activity.isFinishing()) return;
             float startY = _stage3Card.getHeight() > 0
                     ? _stage3Card.getHeight() + dpToPx(_layout.cardEdgeMarginDp)
                     : dpToPx(_layout.slideInFallbackDp);

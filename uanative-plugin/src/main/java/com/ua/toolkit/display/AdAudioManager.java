@@ -128,7 +128,12 @@ public class AdAudioManager
         if (mediaPlayer != null)
         {
             float volume = isDucked ? 0.2f : (isMuted ? 0.0f : 1.0f);
-            mediaPlayer.setVolume(volume, volume);
+            // setVolume() calls native _setVolume which throws java.lang.Error (not Exception)
+            // on Android 14+ when the MediaPlayer has been released at the native level but the
+            // Java reference is not yet null — e.g. when a queued focus-change callback fires
+            // just after finishWithResult() called audioManager.release().
+            try { mediaPlayer.setVolume(volume, volume); }
+            catch (Throwable t) { Log.w(TAG, "applyMuteState: setVolume failed — " + t.getMessage()); }
         }
     }
 

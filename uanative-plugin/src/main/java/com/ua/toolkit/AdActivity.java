@@ -46,6 +46,7 @@ public class AdActivity extends Activity implements
     private boolean closeButtonEarned = false;
     private boolean resumingFromPlayOverlay = false;
     private boolean adStartedFired = false;
+    private boolean adClickFired   = false;
     private int savedVideoPosition = 0;
     private OnBackInvokedCallback backCallback; // API 33+
     private android.content.BroadcastReceiver noisyAudioReceiver; // headphone unplug
@@ -91,6 +92,7 @@ public class AdActivity extends Activity implements
             savedVideoPosition = savedInstanceState.getInt("videoPosition", 0);
             hasVisitedStore   = savedInstanceState.getBoolean("hasVisitedStore", false);
             adStartedFired    = savedInstanceState.getBoolean("adStartedFired", false);
+            adClickFired      = savedInstanceState.getBoolean("adClickFired",   false);
             Log.d(TAG, "onCreate: state restored — isFullyWatched=" + isFullyWatched
                     + " closeButtonEarned=" + closeButtonEarned
                     + " videoPosition=" + savedVideoPosition);
@@ -221,6 +223,9 @@ public class AdActivity extends Activity implements
 
         popup = new AdPopup(this, uiManager.getRootLayout(), new PopupEventHandler());
         popup.attach(config);
+        // Restore click state on recreation so the fresh AdPopup instance cannot re-fire
+        // the attribution URL even if the user opens the store again after the recreation.
+        if (adClickFired) popup.markClickFired();
 
         // Once insets are known, push them to AdPopup so cards sit above the navigation bar.
         // insetsApplied is one-shot so this fires exactly once per activity lifecycle.
@@ -300,6 +305,8 @@ public class AdActivity extends Activity implements
         @Override
         public void onAdClicked()
         {
+            if (adClickFired) return;
+            adClickFired = true;
             Log.d(TAG, "popup.onAdClicked — firing callback");
             if (callback != null) callback.onAdClicked();
         }
@@ -615,6 +622,7 @@ public class AdActivity extends Activity implements
         outState.putBoolean("closeButtonEarned", closeButtonEarned);
         outState.putBoolean("hasVisitedStore", hasVisitedStore);
         outState.putBoolean("adStartedFired", adStartedFired);
+        outState.putBoolean("adClickFired",   adClickFired);
         int pos = videoPlayer != null
                 ? Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition())
                 : 0;

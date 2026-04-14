@@ -229,6 +229,15 @@ public class AdPopup
         }
     }
 
+    /**
+     * Restores click-fired state after activity recreation — prevents double attribution
+     * on a fresh AdPopup instance that would otherwise start with _clickUrlFired=false.
+     */
+    public void markClickFired()
+    {
+        _clickUrlFired = true;
+    }
+
     public void cancel()
     {
         Log.d(TAG, "cancel: state=" + _state + " stage1=" + (_stage1Card != null) + " stage3=" + (_stage3Card != null));

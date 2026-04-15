@@ -9,4 +9,5 @@ public interface AdCallback {
     void onAdClicked();
     void onAdFinished(boolean success);
     void onAdFailed(String reason);
+    void onAdFeedback(String reason);
 }

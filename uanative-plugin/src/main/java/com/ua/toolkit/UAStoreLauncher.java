@@ -128,18 +128,23 @@ public class UAStoreLauncher
         }
     }
 
+    public interface ReferrerCallback
+    {
+        void onResolved(String referrer); // null if resolution failed
+    }
+
     /**
-     * Fires the Adjust click URL in a hidden WebView without opening the store.
-     * Used in PATH 1 (half-sheet) where the store opens via startActivityForResult
-     * and only the click event needs to be recorded with Adjust's servers.
-     * The resolver follows the redirect chain but the onStoreFound callback
-     * deliberately does NOT call StoreOpener — the half-sheet handles that.
+     * Resolves an Adjust click URL and returns the referrer string extracted from the redirect chain.
+     * Used by the half-sheet path: fires the click event with Adjust's servers AND extracts the
+     * adjust_reftag referrer so it can be embedded in the Play Store deep-link URL for attribution.
+     * Calls onResolved(null) on failure — caller should fall back to a tracker-only referrer.
      */
-    public static void fireClickUrl(Context context, String clickUrl)
+    public static void resolveReferrer(Context context, String clickUrl, ReferrerCallback callback)
     {
         if (context == null || clickUrl == null || clickUrl.isEmpty())
         {
-            Log.w(TAG, "fireClickUrl: skipped — context or clickUrl is null/empty");
+            Log.w(TAG, "resolveReferrer: skipped — context or clickUrl is null/empty");
+            callback.onResolved(null);
             return;
         }
 
@@ -152,23 +157,24 @@ public class UAStoreLauncher
         currentResolver = new HeadlessWebViewResolver(context);
         currentResolver.setTimeout(DEFAULT_TIMEOUT_MS);
 
-        Log.d(TAG, "fireClickUrl: firing click URL — " + clickUrl);
+        Log.d(TAG, "resolveReferrer: resolving — " + clickUrl);
 
         currentResolver.resolve(clickUrl, new HeadlessWebViewResolver.ResolverCallback()
         {
             @Override
             public void onStoreFound(HeadlessWebViewResolver.StoreInfo storeInfo)
             {
-                // Click event fired successfully — store opens via half-sheet, not here
-                Log.d(TAG, "fireClickUrl: click tracked — " + storeInfo.toString());
                 currentResolver = null;
+                Log.d(TAG, "resolveReferrer: resolved — referrer=" + storeInfo.referrer);
+                callback.onResolved(storeInfo.referrer);
             }
 
             @Override
             public void onFailed(String reason)
             {
-                Log.w(TAG, "fireClickUrl: click tracking failed — " + reason);
                 currentResolver = null;
+                Log.w(TAG, "resolveReferrer: failed (" + reason + ") — caller will use fallback referrer");
+                callback.onResolved(null);
             }
         });
     }

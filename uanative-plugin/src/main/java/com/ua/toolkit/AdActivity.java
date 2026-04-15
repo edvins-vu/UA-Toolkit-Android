@@ -310,6 +310,13 @@ public class AdActivity extends Activity implements
             Log.d(TAG, "popup.onAdClicked — firing callback");
             if (callback != null) callback.onAdClicked();
         }
+
+        @Override
+        public void onNotInterested()
+        {
+            Log.d(TAG, "popup.onNotInterested — firing callback");
+            if (callback != null) callback.onAdFeedback("not_interested");
+        }
     }
 
     // --- Ad lifecycle ---

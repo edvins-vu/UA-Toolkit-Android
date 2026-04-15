@@ -29,11 +29,12 @@ public class AdPopup
 {
     public interface Listener
     {
-        void onPeeked();       // Stage 1 first becomes visible
-        void onDismissed();    // Popup fully done — ad should close
-        void onExpanded();     // Stage 2 shown — pause video
-        void onCollapsed();    // Stage 2 → Stage 3 — resume video
-        void onAdClicked();    // Stage 1 GET tapped — fire analytics
+        void onPeeked();          // Stage 1 first becomes visible
+        void onDismissed();       // Popup fully done — ad should close
+        void onExpanded();        // Stage 2 shown — pause video
+        void onCollapsed();       // Stage 2 → Stage 3 — resume video
+        void onAdClicked();       // Stage 1 GET tapped — fire analytics
+        void onNotInterested();   // Feedback "Not Interested" tapped
     }
 
     public static final int REQUEST_PLAY_OVERLAY = 1001;
@@ -67,6 +68,7 @@ public class AdPopup
     private Runnable _stage3PulseRunnable;
     private Runnable _scheduledPeekRunnable;
     private boolean _clickUrlFired = false; // ensures Adjust click fires only once per ad session
+    private AdFeedbackButton _feedbackButton;
 
     // Insets — set once via applyInsets() when AdUIManager receives its first inset dispatch
     private int _cardBottomInset = 0;
@@ -98,6 +100,12 @@ public class AdPopup
         _stage1Card.setTranslationY(_rootLayout.getHeight() > 0
                 ? _rootLayout.getHeight() : dpToPx(_layout.offscreenFallbackDp));
         _stage1Card.setVisibility(View.INVISIBLE);
+
+        _feedbackButton = new AdFeedbackButton(_activity);
+        _feedbackButton.attach(_rootLayout, () -> {
+            _feedbackButton.hide();
+            _listener.onNotInterested();
+        });
     }
 
     public void schedulePeek(int delaySeconds)
@@ -227,6 +235,7 @@ public class AdPopup
             lp.rightMargin  = right;
             _stage3Card.setLayoutParams(lp);
         }
+        _feedbackButton.applyInsets(bottomInset);
     }
 
     /**
@@ -262,6 +271,11 @@ public class AdPopup
             _stage1Card.animate().cancel();
             _rootLayout.removeView(_stage1Card);
             _stage1Card = null;
+        }
+        if (_feedbackButton != null)
+        {
+            _feedbackButton.cancel();
+            _feedbackButton = null;
         }
     }
 
@@ -365,26 +379,26 @@ public class AdPopup
             return;
         }
 
-        // Extract Adjust token from clickUrl and embed as referrer for attribution.
-        // Google Play's Install Referrer API delivers it to the installed app on first launch.
-        // Guard: if token extraction fails (null clickUrl, no path segment, parse error) omit the
-        // tracker param rather than forwarding the literal string "adjust_tracker=null" to Adjust.
+        // Build a fallback referrer from the click URL's path token + query params.
+        // This is used when Adjust redirect resolution fails or click was already tracked.
+        // The full adjust_reftag referrer (deterministic, per-click) is resolved on first tap below.
         String tracker = extractAdjustToken(_config != null ? _config.clickUrl : null);
-        String rawReferrer = tracker != null
-                ? "adjust_tracker=" + tracker + "&utm_source=adjust_store"
+        String clickQueryParams = extractQueryString(_config != null ? _config.clickUrl : null);
+        String fallbackReferrer = tracker != null
+                ? "adjust_tracker=" + tracker
+                    + (clickQueryParams != null ? "&" + clickQueryParams : "")
+                    + "&utm_source=adjust_store"
                 : "utm_source=adjust_store";
-        // Encode the entire referrer string for the URL
-        String encodedReferrer = Uri.encode(rawReferrer);
+        Log.d(TAG, "launchPlayOverlay: tracker=" + tracker + " fallbackReferrer=" + fallbackReferrer);
 
-        String deepLinkUrl = "https://play.google.com/d?id=" + _bundleId + "&referrer=" + encodedReferrer;
-        Log.d(TAG, "launchPlayOverlay: opening store for bundleId=" + _bundleId);
-
+        // Intent base — referrer will be appended right before startActivityForResult in each branch
         Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setData(Uri.parse(deepLinkUrl));
+        intent.setData(Uri.parse("https://play.google.com/d?id=" + _bundleId));
         intent.setPackage("com.android.vending");
         intent.putExtra("overlay", true);
         intent.putExtra("callerId", _activity.getPackageName());
 
+        _feedbackButton.hide();
         _state = State.PLAY_OVERLAY;
         _listener.onExpanded();
 
@@ -401,29 +415,36 @@ public class AdPopup
 
         if (intent.resolveActivity(_activity.getPackageManager()) != null)
         {
-            Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — launching via startActivityForResult");
-            if (!_clickUrlFired)
+            // PATH: half-sheet
+            if (!_clickUrlFired && _config != null && !_config.clickUrl.isEmpty())
             {
-                if (_config != null && _config.clickUrl != null && !_config.clickUrl.isEmpty())
+                _clickUrlFired = true;
+                UAStoreLauncher.resolveReferrer(_activity, _config.clickUrl, resolvedReferrer ->
                 {
-                    _clickUrlFired = true;
-                    UAStoreLauncher.fireClickUrl(_activity, _config.clickUrl);
-                }
-                else
-                {
-                    Log.e(TAG, "launchPlayOverlay: PATH=half-sheet — clickUrl is null, click not tracked");
-                }
+                    if (_isCancelled || _activity.isFinishing()) return;
+                    boolean gotReftag = resolvedReferrer != null && !resolvedReferrer.isEmpty();
+                    String referrer = gotReftag ? resolvedReferrer : fallbackReferrer;
+                    Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — referrer=" + referrer
+                            + (gotReftag ? " (adjust_reftag)" : " (fallback tracker)"));
+                    intent.setData(Uri.parse("https://play.google.com/d?id=" + _bundleId
+                            + "&referrer=" + Uri.encode(referrer)));
+                    _activity.startActivityForResult(intent, REQUEST_PLAY_OVERLAY);
+                });
             }
             else
             {
-                Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — click already tracked for this session");
+                if (_clickUrlFired)
+                    Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — click already tracked, referrer=" + fallbackReferrer);
+                else
+                    Log.e(TAG, "launchPlayOverlay: PATH=half-sheet — clickUrl is null, click not tracked");
+                intent.setData(Uri.parse("https://play.google.com/d?id=" + _bundleId
+                        + "&referrer=" + Uri.encode(fallbackReferrer)));
+                _activity.startActivityForResult(intent, REQUEST_PLAY_OVERLAY);
             }
-            _activity.startActivityForResult(intent, REQUEST_PLAY_OVERLAY);
         }
         else
         {
-            // Play Store v40.4+ not present — resolve Adjust tracker via UAStoreLauncher
-            // so attribution is preserved through the full redirect chain.
+            // PATH: direct-fallback — Play Store v40.4+ half-sheet not available
             Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — half-sheet unsupported, resolving via UAStoreLauncher");
             _state = State.COLLAPSED;
             _listener.onCollapsed();
@@ -431,32 +452,30 @@ public class AdPopup
 
             if (_config == null || _config.clickUrl == null || _config.clickUrl.isEmpty())
             {
-                // No clickUrl means attribution is lost but the store can still open via bundleId.
-                Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, skipping attribution, opening store via bundleId");
+                Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, opening store via bundleId referrer=" + fallbackReferrer);
                 if (!_isCancelled && !_activity.isFinishing())
-                    StoreOpener.openStore(_activity, _bundleId, rawReferrer);
+                    StoreOpener.openStore(_activity, _bundleId, fallbackReferrer);
                 return;
             }
 
             if (!_clickUrlFired)
             {
-                // First tap — fire click event AND open store via URL resolution
                 _clickUrlFired = true;
                 UAStoreLauncher.openLink(_activity, _config.clickUrl, new UAStoreLauncher.Callback()
                 {
                     @Override
                     public void onSuccess(String packageId)
                     {
-                        Log.d(TAG, "launchPlayOverlay: fallback store opened — packageId=" + packageId);
+                        Log.d(TAG, "launchPlayOverlay: fallback store opened via Adjust referrer — packageId=" + packageId);
                     }
 
                     @Override
                     public void onFailed(String reason)
                     {
                         Log.e(TAG, "launchPlayOverlay: fallback UAStoreLauncher failed (" + reason + ")"
-                                + " — retrying with StoreOpener bundleId=" + _bundleId);
+                                + " — retrying with StoreOpener bundleId=" + _bundleId + " referrer=" + fallbackReferrer);
                         if (!_isCancelled && !_activity.isFinishing())
-                            StoreOpener.openStore(_activity, _bundleId, rawReferrer);
+                            StoreOpener.openStore(_activity, _bundleId, fallbackReferrer);
                         else
                             Log.w(TAG, "launchPlayOverlay: onFailed — skipping StoreOpener, activity finishing or cancelled");
                     }
@@ -464,9 +483,8 @@ public class AdPopup
             }
             else
             {
-                // Click already tracked this session — open store directly without re-firing
-                Log.d(TAG, "launchPlayOverlay: fallback — click already tracked, opening store directly bundleId=" + _bundleId);
-                StoreOpener.openStore(_activity, _bundleId, rawReferrer);
+                Log.d(TAG, "launchPlayOverlay: fallback — click already tracked, opening store directly bundleId=" + _bundleId + " referrer=" + fallbackReferrer);
+                StoreOpener.openStore(_activity, _bundleId, fallbackReferrer);
             }
         }
     }
@@ -592,6 +610,7 @@ public class AdPopup
             };
             _handler.postDelayed(_stage1PulseRunnable, pulseDelayMs);
         }
+        _feedbackButton.show();
         _listener.onPeeked();
     }
 
@@ -612,7 +631,7 @@ public class AdPopup
     // --- Attribution ---
 
     /**
-     * Extracts the Adjust tracker token from a URL
+     * Extracts the Adjust tracker token from a URL.
      * Returns the last non-empty path segment, or null if not found.
      */
     private static String extractAdjustToken(String clickUrl)
@@ -622,6 +641,25 @@ public class AdPopup
         {
             String path = Uri.parse(clickUrl).getLastPathSegment();
             return (path != null && !path.isEmpty()) ? path : null;
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
+    }
+
+    /**
+     * Extracts the raw query string (without leading '?') from a URL for use as referrer params.
+     * Example: "https://app.adjust.com/abc?adgroup=x&campaign=y" → "adgroup=x&campaign=y"
+     * Returns null if the URL has no query string.
+     */
+    private static String extractQueryString(String clickUrl)
+    {
+        if (clickUrl == null || clickUrl.isEmpty()) return null;
+        try
+        {
+            String query = Uri.parse(clickUrl).getQuery();
+            return (query != null && !query.isEmpty()) ? query : null;
         }
         catch (Exception e)
         {

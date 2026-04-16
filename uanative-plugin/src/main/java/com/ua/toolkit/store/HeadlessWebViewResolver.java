@@ -17,7 +17,7 @@ import android.webkit.WebViewClient;
  */
 public class HeadlessWebViewResolver
 {
-    private static final String TAG = "HeadlessWebViewResolver";
+    private static final String TAG = "UA/HeadlessWebView";
     private static final long DEFAULT_TIMEOUT_MS = 10000; // 10 seconds
 
     /**

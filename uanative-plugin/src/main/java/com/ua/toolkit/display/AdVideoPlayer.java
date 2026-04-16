@@ -12,7 +12,7 @@ import java.io.File;
  */
 public class AdVideoPlayer
 {
-    private static final String TAG = "AdVideoPlayer";
+    private static final String TAG = "UA/VideoPlayer";
 
     public interface Listener
     {

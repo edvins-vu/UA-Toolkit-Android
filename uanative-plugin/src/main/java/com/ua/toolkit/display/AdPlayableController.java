@@ -36,7 +36,7 @@ public class AdPlayableController
         void onError(String message);
     }
 
-    private static final String TAG = "AdPlayableController";
+    private static final String TAG = "UA/PlayableCtrl";
 
     /**
      * Injected as the first child of {@code <head>} via {@code loadDataWithBaseURL} before

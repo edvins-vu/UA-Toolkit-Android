@@ -13,7 +13,7 @@ import android.util.Log;
  */
 public class AdAudioManager
 {
-    private static final String TAG = "AdAudioManager";
+    private static final String TAG = "UA/AudioManager";
 
     /**
      * Notified when audio focus is lost or regained by an external event

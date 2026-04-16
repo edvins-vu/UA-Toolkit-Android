@@ -15,7 +15,7 @@ import android.util.Log;
  */
 public class UAStoreLauncher
 {
-    private static final String TAG = "UAStoreLauncher";
+    private static final String TAG = "UA/StoreLauncher";
     private static final long DEFAULT_TIMEOUT_MS = 15000;
     public static final String BROWSER_FALLBACK = "browser-fallback";
 

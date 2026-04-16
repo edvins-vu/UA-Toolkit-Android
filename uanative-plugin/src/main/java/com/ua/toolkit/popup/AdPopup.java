@@ -39,7 +39,7 @@ public class AdPopup
 
     public static final int REQUEST_PLAY_OVERLAY = 1001;
 
-    private static final String TAG = "AdPopup";
+    private static final String TAG = "UA/AdPopup";
 
     private enum State { HIDDEN, PEEK, PLAY_OVERLAY, COLLAPSED }
 

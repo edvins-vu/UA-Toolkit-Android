@@ -11,7 +11,7 @@ import android.util.Log;
  * Requires package names to be declared in AndroidManifest.xml <queries> block (Android 11+).
  */
 public class InstalledAppsChecker {
-    private static final String TAG = "InstalledAppsChecker";
+    private static final String TAG = "UA/InstalledApps";
 
     /**
      * Checks which packages from the provided CSV list are installed on the device.

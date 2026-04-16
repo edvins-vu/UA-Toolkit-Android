@@ -13,7 +13,7 @@ import android.util.Log;
  */
 public class StoreOpener
 {
-    private static final String TAG = "StoreOpener";
+    private static final String TAG = "UA/StoreOpener";
     private static final String PLAY_STORE_PACKAGE = "com.android.vending";
 
     /**

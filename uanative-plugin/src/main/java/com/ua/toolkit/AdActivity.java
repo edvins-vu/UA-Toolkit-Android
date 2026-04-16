@@ -28,7 +28,7 @@ public class AdActivity extends Activity implements
         AdVideoPlayer.Listener,
         AdTimerManager.Listener
 {
-    private static final String TAG = "AdActivity";
+    private static final String TAG = "UA/AdActivity";
     private static final int PREPARE_TIMEOUT_MS = 15_000;
     public static AdCallback callback;
     private static WeakReference<AdActivity> currentInstanceRef;

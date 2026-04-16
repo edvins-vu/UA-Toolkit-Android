@@ -187,6 +187,7 @@ public class AdActivity extends Activity implements
             @Override
             public void onAudioFocusPause()
             {
+                if (!adStartedFired) return;
                 pausedByAudioFocus = true;
                 pauseContent();
                 if (timerManager != null) timerManager.pause();

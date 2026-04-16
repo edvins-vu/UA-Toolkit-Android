@@ -255,7 +255,6 @@ class AdFeedbackButton
         btn.setGravity(Gravity.CENTER);
         btn.setPadding(0, dpToPx(ITEM_PADDING_V_DP), 0, dpToPx(ITEM_PADDING_V_DP));
 
-        // Background ripple/highlight for better UX (optional)
         TypedValue outValue = new TypedValue();
         _activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
         btn.setBackgroundResource(outValue.resourceId);
@@ -289,9 +288,6 @@ class AdFeedbackButton
         {
             _isOpen = false;
             _toggleButton.setText(TEXT_TOGGLE_COLLAPSED);
-
-            // This forces the layout to snap to the toggle's size
-            // before any transparency animations can cause a jittery reflow.
             _panel.setVisibility(View.GONE);
             _panel.setAlpha(0f);
         }

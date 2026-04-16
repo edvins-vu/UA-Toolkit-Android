@@ -88,11 +88,11 @@ public class AdConfig
             boolean disableSkipButton,
             boolean disablePulse,
             boolean disablePopupBackground,
+            boolean disableRewardCountdown,
 
             // Reward texts
             String  rewardCountdownText,
             String  rewardEarnedText,
-            boolean disableRewardCountdown,
             int     rewardTextSizeSp,
             String  rewardTextColor,
             String  openStoreButtonText
@@ -130,11 +130,11 @@ public class AdConfig
         this.disableSkipButton      = disableSkipButton;
         this.disablePulse           = disablePulse;
         this.disablePopupBackground = disablePopupBackground;
+        this.disableRewardCountdown = disableRewardCountdown;
 
         // Reward texts
         this.rewardCountdownText    = clampedString(rewardCountdownText, "Reward in: %ds", 60);
         this.rewardEarnedText       = clampedString(rewardEarnedText,    "Reward earned!", 60);
-        this.disableRewardCountdown = disableRewardCountdown;
         this.rewardTextSizeSp       = (rewardTextSizeSp >= 10 && rewardTextSizeSp <= 40) ? rewardTextSizeSp : 14;
         this.rewardTextColor        = validateHex(rewardTextColor, "#FFFFFF");
         this.openStoreButtonText    = clampedString(openStoreButtonText, "OPEN STORE", 30);
@@ -196,11 +196,11 @@ public class AdConfig
                 intent.getBooleanExtra("DISABLE_SKIP_BUTTON", false),
                 intent.getBooleanExtra("DISABLE_PULSE", false),
                 intent.getBooleanExtra("DISABLE_POPUP_BACKGROUND", false),
+                intent.getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
 
                 // Reward texts
                 intent.getStringExtra("REWARD_COUNTDOWN_TEXT"),
                 intent.getStringExtra("REWARD_EARNED_TEXT"),
-                intent.getBooleanExtra("DISABLE_REWARD_COUNTDOWN", false),
                 intent.getIntExtra("REWARD_TEXT_SIZE_SP", -1),
                 intent.getStringExtra("REWARD_TEXT_COLOR"),
                 intent.getStringExtra("OPEN_STORE_BUTTON_TEXT")

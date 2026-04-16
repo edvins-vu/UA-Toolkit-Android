@@ -39,7 +39,6 @@ class AdFeedbackButton
     private static final int   BORDER_COLOR      = Color.argb(51,  255, 255, 255);
     private static final int   PANEL_BG_COLOR    = Color.parseColor("#80000000");
     private static final int   PANEL_CORNER_DP   = 16;
-    private static final int   PANEL_MIN_W_DP    = 120;
     private static final int   PANEL_PADDING_H_DP = 14;
     private static final int   PANEL_PADDING_V_DP = 8;
     private static final int   PANEL_SPACING_DP  = 4;   // gap between panel and toggle
@@ -47,6 +46,13 @@ class AdFeedbackButton
     private static final int   ITEM_TEXT_SIZE_SP = 12;
     private static final int   ITEM_PADDING_V_DP = 6;
     private static final int   EDGE_MARGIN_DP    = 24;  // matches AdPopupLayout.cardEdgeMarginDp
+
+    // Text labels
+    private static final String TEXT_TOGGLE_COLLAPSED = "i";
+    private static final String TEXT_TOGGLE_EXPANDED  = "✕";
+    private static final String TEXT_INTERESTED       = "Interested";
+    private static final String TEXT_NOT_INTERESTED   = "Not Interested";
+    private static final String TEXT_THANK_YOU        = "Thank you for your feedback!";
 
     private final Activity _activity;
     private FrameLayout _rootLayout;
@@ -60,6 +66,8 @@ class AdFeedbackButton
     // State
     private boolean _isOpen        = false;
     private boolean _feedbackGiven = false;
+
+    private static final int PANEL_WIDTH_DP = 140;
 
     AdFeedbackButton(Activity activity)
     {
@@ -89,10 +97,21 @@ class AdFeedbackButton
         _outerContainer.setLayoutParams(lp);
     }
 
-    /** Fades the (i) toggle into view. Called from AdPopup.peek(). */
+    /**
+     * Restores feedback-given state after activity recreation.
+     * Called before the widget is shown — views don't exist yet so no visual update is needed.
+     * The next populatePanel() call will show "Thank you" instead of the option buttons.
+     */
+    void restoreFeedbackGiven()
+    {
+        _feedbackGiven = true;
+    }
+
+    /** Fades the (i) toggle into view. Called from AdPopup.peek() and after store return. */
     void show()
     {
         if (_outerContainer == null) return;
+        _outerContainer.animate().cancel();
         _outerContainer.setVisibility(View.VISIBLE);
         _outerContainer.animate()
                 .alpha(1f)
@@ -100,18 +119,28 @@ class AdFeedbackButton
                 .start();
     }
 
-    /** Fades out and removes the entire widget. Called when the store opens. */
+    /**
+     * Fades the widget out without removing it from the hierarchy.
+     * Resets to collapsed state (panel closed, toggle back to "i") so show() restores
+     * a clean (i) toggle regardless of what state the panel was in when store was opened.
+     * Called when the store opens — show() will restore the button on return.
+     */
     void hide()
     {
         if (_outerContainer == null) return;
+        _outerContainer.animate().cancel();
+        _panel.animate().cancel();
+        _isOpen = false;
+        if (_toggleButton != null) _toggleButton.setText(TEXT_TOGGLE_COLLAPSED);
+        _panel.setVisibility(View.GONE);
+        _panel.setAlpha(0f);
         _outerContainer.animate()
                 .alpha(0f)
                 .setDuration(ANIM_DURATION_MS)
                 .withEndAction(() ->
                 {
-                    if (_outerContainer != null && _outerContainer.getParent() != null)
-                        _rootLayout.removeView(_outerContainer);
-                    _outerContainer = null;
+                    if (_outerContainer != null)
+                        _outerContainer.setVisibility(View.INVISIBLE);
                 })
                 .start();
     }
@@ -152,7 +181,6 @@ class AdFeedbackButton
         LinearLayout panel = new LinearLayout(_activity);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setGravity(Gravity.CENTER_HORIZONTAL);
-        panel.setMinimumWidth(dpToPx(PANEL_MIN_W_DP));
 
         int padH = dpToPx(PANEL_PADDING_H_DP);
         int padV = dpToPx(PANEL_PADDING_V_DP);
@@ -164,7 +192,7 @@ class AdFeedbackButton
         panel.setBackground(bg);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dpToPx(PANEL_WIDTH_DP),
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dpToPx(PANEL_SPACING_DP);
         panel.setLayoutParams(lp);
@@ -176,7 +204,7 @@ class AdFeedbackButton
     private TextView buildToggleButton()
     {
         TextView toggle = new TextView(_activity);
-        toggle.setText("i");
+        toggle.setText(TEXT_TOGGLE_COLLAPSED);
         toggle.setTextColor(Color.WHITE);
         toggle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         toggle.setTypeface(Typeface.DEFAULT_BOLD);
@@ -203,7 +231,7 @@ class AdFeedbackButton
         if (_feedbackGiven)
         {
             TextView thanks = new TextView(_activity);
-            thanks.setText("Thank you for your feedback!");
+            thanks.setText(TEXT_THANK_YOU);
             thanks.setTextColor(Color.WHITE);
             thanks.setTextSize(TypedValue.COMPLEX_UNIT_SP, ITEM_TEXT_SIZE_SP);
             thanks.setGravity(Gravity.CENTER);
@@ -212,9 +240,9 @@ class AdFeedbackButton
         }
         else
         {
-            _panel.addView(makeFeedbackRow("Interested",     true));
+            _panel.addView(makeFeedbackRow(TEXT_INTERESTED,     true));
             _panel.addView(makeDivider());
-            _panel.addView(makeFeedbackRow("Not Interested", false));
+            _panel.addView(makeFeedbackRow(TEXT_NOT_INTERESTED, false));
         }
     }
 
@@ -227,10 +255,16 @@ class AdFeedbackButton
         btn.setGravity(Gravity.CENTER);
         btn.setPadding(0, dpToPx(ITEM_PADDING_V_DP), 0, dpToPx(ITEM_PADDING_V_DP));
 
+        // Background ripple/highlight for better UX (optional)
+        TypedValue outValue = new TypedValue();
+        _activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
+        btn.setBackgroundResource(outValue.resourceId);
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         btn.setLayoutParams(lp);
+
         btn.setOnClickListener(v -> onFeedbackTapped(interested));
         return btn;
     }
@@ -254,18 +288,19 @@ class AdFeedbackButton
         if (_isOpen)
         {
             _isOpen = false;
-            _toggleButton.setText("i");
-            _panel.animate()
-                    .alpha(0f)
-                    .setDuration(ANIM_DURATION_MS)
-                    .withEndAction(() -> { if (_panel != null) _panel.setVisibility(View.GONE); })
-                    .start();
+            _toggleButton.setText(TEXT_TOGGLE_COLLAPSED);
+
+            // This forces the layout to snap to the toggle's size
+            // before any transparency animations can cause a jittery reflow.
+            _panel.setVisibility(View.GONE);
+            _panel.setAlpha(0f);
         }
         else
         {
             _isOpen = true;
-            _toggleButton.setText("✕");
+            _toggleButton.setText(TEXT_TOGGLE_EXPANDED);
             populatePanel();
+
             _panel.setAlpha(0f);
             _panel.setVisibility(View.VISIBLE);
             _panel.animate()
@@ -277,6 +312,7 @@ class AdFeedbackButton
 
     private void onFeedbackTapped(boolean interested)
     {
+        if (_feedbackGiven) return; // guard against double-tap firing the callback twice
         _feedbackGiven = true;
         populatePanel(); // swap buttons → thank-you message
 

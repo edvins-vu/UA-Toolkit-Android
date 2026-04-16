@@ -45,8 +45,9 @@ public class AdActivity extends Activity implements
     private boolean pausedByAudioFocus = false;
     private boolean closeButtonEarned = false;
     private boolean resumingFromPlayOverlay = false;
-    private boolean adStartedFired = false;
-    private boolean adClickFired   = false;
+    private boolean adStartedFired  = false;
+    private boolean adClickFired    = false;
+    private boolean adFeedbackGiven = false;
     private int savedVideoPosition = 0;
     private OnBackInvokedCallback backCallback; // API 33+
     private android.content.BroadcastReceiver noisyAudioReceiver; // headphone unplug
@@ -91,11 +92,13 @@ public class AdActivity extends Activity implements
             closeButtonEarned = savedInstanceState.getBoolean("closeButtonEarned", false);
             savedVideoPosition = savedInstanceState.getInt("videoPosition", 0);
             hasVisitedStore   = savedInstanceState.getBoolean("hasVisitedStore", false);
-            adStartedFired    = savedInstanceState.getBoolean("adStartedFired", false);
-            adClickFired      = savedInstanceState.getBoolean("adClickFired",   false);
+            adStartedFired    = savedInstanceState.getBoolean("adStartedFired",  false);
+            adClickFired      = savedInstanceState.getBoolean("adClickFired",    false);
+            adFeedbackGiven   = savedInstanceState.getBoolean("adFeedbackGiven", false);
             Log.d(TAG, "onCreate: state restored — isFullyWatched=" + isFullyWatched
                     + " closeButtonEarned=" + closeButtonEarned
-                    + " videoPosition=" + savedVideoPosition);
+                    + " videoPosition=" + savedVideoPosition
+                    + " adFeedbackGiven=" + adFeedbackGiven);
         }
 
         initializeManagers();
@@ -117,6 +120,10 @@ public class AdActivity extends Activity implements
             }
             // If either condition not yet met, OPEN_STORE is already the default — no action needed.
         }
+
+        // Restore per-session single-fire guards on the fresh AdPopup instance
+        if (adClickFired)    popup.markClickFired();
+        if (adFeedbackGiven) popup.markFeedbackGiven();
 
         overridePendingTransition(R.anim.slide_in_bottom, 0);
         registerBackCallback();
@@ -223,9 +230,6 @@ public class AdActivity extends Activity implements
 
         popup = new AdPopup(this, uiManager.getRootLayout(), new PopupEventHandler());
         popup.attach(config);
-        // Restore click state on recreation so the fresh AdPopup instance cannot re-fire
-        // the attribution URL even if the user opens the store again after the recreation.
-        if (adClickFired) popup.markClickFired();
 
         // Once insets are known, push them to AdPopup so cards sit above the navigation bar.
         // insetsApplied is one-shot so this fires exactly once per activity lifecycle.
@@ -314,6 +318,7 @@ public class AdActivity extends Activity implements
         @Override
         public void onNotInterested()
         {
+            adFeedbackGiven = true;
             Log.d(TAG, "popup.onNotInterested — firing callback");
             if (callback != null) callback.onAdFeedback("not_interested");
         }
@@ -628,8 +633,9 @@ public class AdActivity extends Activity implements
         outState.putBoolean("isFullyWatched", isFullyWatched);
         outState.putBoolean("closeButtonEarned", closeButtonEarned);
         outState.putBoolean("hasVisitedStore", hasVisitedStore);
-        outState.putBoolean("adStartedFired", adStartedFired);
-        outState.putBoolean("adClickFired",   adClickFired);
+        outState.putBoolean("adStartedFired",  adStartedFired);
+        outState.putBoolean("adClickFired",    adClickFired);
+        outState.putBoolean("adFeedbackGiven", adFeedbackGiven);
         int pos = videoPlayer != null
                 ? Math.max(videoPlayer.getCurrentPosition(), videoPlayer.getLastPausedPosition())
                 : 0;

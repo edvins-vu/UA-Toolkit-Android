@@ -103,7 +103,6 @@ public class AdPopup
 
         _feedbackButton = new AdFeedbackButton(_activity);
         _feedbackButton.attach(_rootLayout, () -> {
-            _feedbackButton.hide();
             _listener.onNotInterested();
         });
     }
@@ -206,6 +205,7 @@ public class AdPopup
         _state = State.COLLAPSED;
         _listener.onCollapsed();
         showStage3Card();
+        _feedbackButton.show(); // restore feedback button after returning from store
         // Restart the 5-second pulse countdown each time the user returns from the store
         scheduleStage3Pulse();
     }
@@ -245,6 +245,15 @@ public class AdPopup
     public void markClickFired()
     {
         _clickUrlFired = true;
+    }
+
+    /**
+     * Restores feedback-given state after activity recreation — ensures the panel shows
+     * "Thank you for your feedback!" instead of the option buttons on the fresh instance.
+     */
+    public void markFeedbackGiven()
+    {
+        if (_feedbackButton != null) _feedbackButton.restoreFeedbackGiven();
     }
 
     public void cancel()
@@ -449,6 +458,7 @@ public class AdPopup
             _state = State.COLLAPSED;
             _listener.onCollapsed();
             showStage3Card();
+            _feedbackButton.show(); // restore feedback button — no onActivityResult fires on this path
 
             if (_config == null || _config.clickUrl == null || _config.clickUrl.isEmpty())
             {

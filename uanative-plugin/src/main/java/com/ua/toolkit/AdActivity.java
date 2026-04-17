@@ -141,11 +141,13 @@ public class AdActivity extends Activity implements
     // --- Setup helpers ---
 
     private void lockOrientationToCurrentRotation() {
-        // Lock to the server-configured orientation. SENSOR_* variants allow 180° flips within
-        // the same mode (LANDSCAPE ↔ REVERSE_LANDSCAPE, PORTRAIT ↔ REVERSE_PORTRAIT) but never
-        // cross to the other mode during the ad session.
+        // Portrait: locked to normal portrait only — Play Store half-sheet does not support
+        // reverse portrait, so allowing SENSOR_PORTRAIT would cause a jarring rotation when
+        // the store overlay opens from an upside-down state.
+        // Landscape: SENSOR_LANDSCAPE allows 180° flips (LANDSCAPE ↔ REVERSE_LANDSCAPE) —
+        // common for games played with the charging cable at the top, and Play Store supports it.
         setRequestedOrientation("portrait".equals(config.orientation)
-                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 

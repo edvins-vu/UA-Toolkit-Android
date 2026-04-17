@@ -21,6 +21,7 @@ public class AdConfig
     public final boolean isRewarded;
     public final boolean isFlowB;
     public final String  bundleId;
+    public final String  orientation; // "landscape" (default) or "portrait"
 
     // Timing
     public final int     closeButtonDelay;
@@ -63,6 +64,7 @@ public class AdConfig
             boolean isRewarded,
             boolean isFlowB,
             String  bundleId,
+            String  orientation,
 
             // Timing
             int     closeButtonDelay,
@@ -99,11 +101,12 @@ public class AdConfig
     )
     {
         // Core
-        this.videoPath  = videoPath;
-        this.clickUrl   = clickUrl  != null ? clickUrl  : "";
-        this.isRewarded = isRewarded;
-        this.isFlowB    = isFlowB && isRewarded; // Flow B is only valid for rewarded ads
-        this.bundleId   = bundleId  != null ? bundleId  : "";
+        this.videoPath   = videoPath;
+        this.clickUrl    = clickUrl  != null ? clickUrl  : "";
+        this.isRewarded  = isRewarded;
+        this.isFlowB     = isFlowB && isRewarded; // Flow B is only valid for rewarded ads
+        this.bundleId    = bundleId  != null ? bundleId  : "";
+        this.orientation = validateOrientation(orientation);
 
         // Timing
         this.closeButtonDelay   = (closeButtonDelay   >= 0 && closeButtonDelay   <= 120) ? closeButtonDelay   : 5;
@@ -140,6 +143,12 @@ public class AdConfig
         this.openStoreButtonText    = clampedString(openStoreButtonText, "OPEN STORE", 30);
     }
 
+    private static String validateOrientation(String value)
+    {
+        if ("portrait".equals(value)) return "portrait";
+        return "landscape";
+    }
+
     private static String clampedString(String value, String fallback, int maxLen)
     {
         if (value == null || value.isEmpty()) return fallback;
@@ -171,6 +180,7 @@ public class AdConfig
                 intent.getBooleanExtra("IS_REWARDED", false),
                 intent.getBooleanExtra("IS_FLOW_B", false),
                 intent.getStringExtra("BUNDLE_ID"),
+                intent.getStringExtra("ORIENTATION"),
 
                 // Timing
                 intent.getIntExtra("CLOSE_BUTTON_DELAY", -1),

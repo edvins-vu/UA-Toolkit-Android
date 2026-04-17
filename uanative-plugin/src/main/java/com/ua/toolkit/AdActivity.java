@@ -66,9 +66,9 @@ public class AdActivity extends Activity implements
         super.onCreate(savedInstanceState);
         currentInstanceRef = new WeakReference<>(this);
 
+        parseIntentConfig();               // must precede lockOrientation — config.orientation needed
         lockOrientationToCurrentRotation();
         setupWindowFlags();
-        parseIntentConfig();
         if (!config.isValid())
         {
             String errorMsg = "Invalid config - ad file is missing or path is null"
@@ -141,9 +141,12 @@ public class AdActivity extends Activity implements
     // --- Setup helpers ---
 
     private void lockOrientationToCurrentRotation() {
-        // Game is landscape-only — allow sensor-driven switching between LANDSCAPE and REVERSE_LANDSCAPE
-        // so the ad follows 180° device flips without ever snapping to portrait.
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // Lock to the server-configured orientation. SENSOR_* variants allow 180° flips within
+        // the same mode (LANDSCAPE ↔ REVERSE_LANDSCAPE, PORTRAIT ↔ REVERSE_PORTRAIT) but never
+        // cross to the other mode during the ad session.
+        setRequestedOrientation("portrait".equals(config.orientation)
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     private void setupWindowFlags() {
@@ -562,6 +565,14 @@ public class AdActivity extends Activity implements
     }
 
     // --- Activity lifecycle ---
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Reset the insets latch so the system's re-dispatched insets after an initial
+        // orientation change (e.g. portrait ad from a landscape game) are correctly applied.
+        if (uiManager != null) uiManager.resetInsetsLatch();
+    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {

@@ -339,11 +339,16 @@ public class AdPopup
         getBtn.setTextColor(AdVisualsHelper.parseButtonTextColor(_config));
         getBtn.setTextSize(_layout.buttonTextSizeSp);
         getBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        getBtn.setMaxLines(1);
+        getBtn.setEllipsize(android.text.TextUtils.TruncateAt.END);
         getBtn.setGravity(Gravity.CENTER);
         getBtn.setBackground(AdVisualsHelper.makeButtonBackground(
                 _config, dpToPx(_layout.buttonCornerRadiusDp)));
 
-        int buttonWidth  = dpToPx(_layout.buttonWidthDp);
+        int screenWidth    = _activity.getResources().getDisplayMetrics().widthPixels;
+        int marginPx       = _cardRightInset + 2 * dpToPx(_layout.cardEdgeMarginDp) + 2 * dpToPx(_layout.cardPaddingHorizontalDp);
+        int maxButtonWidth = Math.max(screenWidth - marginPx, dpToPx(60));
+        int buttonWidth    = Math.min(dpToPx(_layout.buttonWidthDp), maxButtonWidth);
         int buttonHeight = _layout.buttonHeightDp > 0
                 ? dpToPx(_layout.buttonHeightDp)
                 : LinearLayout.LayoutParams.WRAP_CONTENT;

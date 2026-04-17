@@ -104,6 +104,11 @@ public class AdUIManager
         insetsReadyCallback = cb;
     }
 
+    public void resetInsetsLatch()
+    {
+        insetsApplied = false;
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     public void setupUI()
     {
@@ -203,6 +208,10 @@ public class AdUIManager
                 dpToPx(_layout.timerPaddingHorizontalDp), dpToPx(_layout.timerPaddingVerticalDp));
         timerText.setBackground(bg);
         timerText.setGravity(Gravity.CENTER);
+        int timerScreenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+        timerText.setMaxWidth((int)(timerScreenWidth * 0.85f));
+        timerText.setMaxLines(1);
+        timerText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         // Playable ads are HTML5 content — a floating timer pill would overlap game UI unpredictably.
         // Reward for rewarded playable is gated on the close button delay (closeButtonEarned),
         // not on a visible countdown, so the timer text is never needed for playable ads.

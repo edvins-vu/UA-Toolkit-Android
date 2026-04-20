@@ -107,6 +107,23 @@ class AdFeedbackButton
         _feedbackGiven = true;
     }
 
+    /**
+     * Raises the feedback widget above the Stage 1 GET card in portrait mode.
+     * Called from AdPopup.peek() once the card is measured, so cardHeightPx reflects the
+     * real layout height including padding and any AdConfig-driven button size changes.
+     * No-op in landscape — horizontal separation is sufficient there.
+     */
+    void updateBottomForCard(int cardBottomMarginPx, int cardHeightPx)
+    {
+        if (_outerContainer == null) return;
+        boolean isPortrait = _activity.getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+        if (!isPortrait) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) _outerContainer.getLayoutParams();
+        lp.bottomMargin = cardBottomMarginPx + cardHeightPx + dpToPx(PANEL_SPACING_DP);
+        _outerContainer.setLayoutParams(lp);
+    }
+
     /** Fades the (i) toggle into view. Called from AdPopup.peek() and after store return. */
     void show()
     {

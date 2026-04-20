@@ -121,7 +121,7 @@ public class AdConfig
         this.getButtonTextColor      = validateHex(getButtonTextColor, "#FFFFFF");
         this.getButtonWidthDp        = (getButtonWidthDp  == -1 || (getButtonWidthDp  >= 40  && getButtonWidthDp  <= 500)) ? getButtonWidthDp  : -1;
         this.getButtonHeightDp       = (getButtonHeightDp == -1 || (getButtonHeightDp >= 20  && getButtonHeightDp <= 200)) ? getButtonHeightDp : -1;
-        this.getButtonTextSizeSp     = (getButtonTextSizeSp >= 10 && getButtonTextSizeSp <= 40) ? getButtonTextSizeSp : 14;
+        this.getButtonTextSizeSp     = (getButtonTextSizeSp >= 10 && getButtonTextSizeSp <= 20) ? getButtonTextSizeSp : 14;
         this.getButtonCornerRadiusDp = (getButtonCornerRadiusDp >= 0 && getButtonCornerRadiusDp <= 200) ? getButtonCornerRadiusDp : 100;
 
         // Popup card — apply fallbacks
@@ -138,7 +138,7 @@ public class AdConfig
         // Reward texts
         this.rewardCountdownText    = clampedString(rewardCountdownText, "Reward in: %ds", 60);
         this.rewardEarnedText       = clampedString(rewardEarnedText,    "Reward earned!", 60);
-        this.rewardTextSizeSp       = (rewardTextSizeSp >= 10 && rewardTextSizeSp <= 40) ? rewardTextSizeSp : 14;
+        this.rewardTextSizeSp       = (rewardTextSizeSp >= 10 && rewardTextSizeSp <= 20) ? rewardTextSizeSp : 14;
         this.rewardTextColor        = validateHex(rewardTextColor, "#FFFFFF");
         this.openStoreButtonText    = clampedString(openStoreButtonText, "OPEN STORE", 30);
     }

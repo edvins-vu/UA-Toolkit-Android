@@ -4,49 +4,58 @@ import android.content.Intent;
 import android.graphics.Color;
 import java.io.File;
 
+/**
+ * Configuration data for ad display.
+ * Centralizes all validation, default values, and range limits.
+ */
 public class AdConfig {
 
-    // --- Logical Grouping of Defaults and Constraints ---
+    // --- Logical Grouping of Constants ---
 
     private static final class Defaults {
-        static final String  ORIENTATION = "landscape";
-        static final int     DELAY       = 5;
-        static final int     SKIP_DELAY  = 3;
+        static final String  ORIENTATION        = "landscape";
+        static final int     GENERAL_DELAY      = 5;
+        static final int     SKIP_DELAY         = 3;
 
         // GET Button
-        static final String  GET_TEXT       = "GET";
-        static final String  GET_COLOR      = "#4CAF50"; // Original Green
-        static final String  GET_TEXT_COLOR = "#FFFFFF";
-        static final int     GET_TEXT_SIZE  = 14;
-        static final int     GET_CORNER     = 100;
+        static final String  GET_TEXT           = "GET";
+        static final String  GET_COLOR          = "#473FFF";
+        static final String  GET_TEXT_COLOR     = "#FFFFFF";
+        static final int     GET_TEXT_SIZE      = 14;
+        static final int     GET_CORNER         = 100;
 
         // Card
-        static final String  CARD_BG_COLOR  = "#80000000"; // Semi-trans black
-        static final int     CARD_CORNER     = 100;
+        static final String  CARD_BG_COLOR      = "#80000000";
+        static final int     CARD_CORNER        = 100;
 
         // Reward
-        static final String  REWARD_COUNTDOWN = "Reward in: %ds";
-        static final String  REWARD_EARNED    = "Reward earned!";
-        static final String  OPEN_STORE       = "OPEN STORE";
+        static final String  REWARD_COUNTDOWN   = "Reward in: %ds";
+        static final String  REWARD_EARNED      = "Reward earned!";
+        static final int     REWARD_TEXT_SIZE   = 14;
+        static final String  OPEN_STORE         = "OPEN STORE";
     }
 
     private static final class Limits {
-        static final int MAX_STR_LEN     = 60;
-        static final int MAX_BTN_STR_LEN = 30;
+        static final int MIN_DELAY              = 0;
+        static final int MAX_DELAY_SHORT        = 60;  // Peek, Skip
+        static final int MAX_DELAY_LONG         = 120; // Close button, Pulse
 
-        static final int MIN_TEXT_SIZE   = 10;
-        static final int MAX_TEXT_SIZE   = 20;
+        static final int MAX_STR_LEN            = 60;
+        static final int MAX_BTN_STR_LEN        = 30;
 
-        static final int MIN_CORNER      = 0;
-        static final int MAX_CORNER      = 200;
+        static final int MIN_TEXT_SIZE          = 10;
+        static final int MAX_TEXT_SIZE          = 20;
 
-        static final int MIN_BTN_WIDTH   = 40;
-        static final int MAX_BTN_WIDTH   = 250;
-        static final int MIN_BTN_HEIGHT  = 20;
-        static final int MAX_BTN_HEIGHT  = 100;
+        static final int MIN_CORNER             = 0;
+        static final int MAX_CORNER             = 200;
+
+        static final int MIN_BTN_WIDTH          = 40;
+        static final int MAX_BTN_WIDTH          = 250;
+        static final int MIN_BTN_HEIGHT         = 20;
+        static final int MAX_BTN_HEIGHT         = 100;
     }
 
-    // --- Properties ---
+    // --- Final Properties ---
 
     public final String  videoPath;
     public final String  clickUrl;
@@ -79,22 +88,42 @@ public class AdConfig {
 
     public final String  rewardCountdownText;
     public final String  rewardEarnedText;
-    public final int     rewardTextSizeSp;
+    public final int     rewardTextSizeSp; // Remains int
     public final String  rewardTextColor;
     public final String  openStoreButtonText;
 
     // --- Constructor ---
 
     public AdConfig(
-            String videoPath, String clickUrl, boolean isRewarded, boolean isFlowB,
-            String bundleId, String orientation, int closeButtonDelay, int peekDelay,
-            int skipButtonDelaySec, int pulseStartDelaySec, String getButtonText,
-            String getButtonColor, String getButtonTextColor, int getButtonWidthDp,
-            int getButtonHeightDp, int getButtonTextSizeSp, int getButtonCornerRadiusDp,
-            String cardBackgroundColor, int cardCornerRadiusDp, boolean disableMuteButton,
-            boolean disableSkipButton, boolean disablePulse, boolean disablePopupBackground,
-            boolean disableRewardCountdown, String rewardCountdownText, String rewardEarnedText,
-            int rewardTextSizeSp, String rewardTextColor, String openStoreButtonText
+            String  videoPath,
+            String  clickUrl,
+            boolean isRewarded,
+            boolean isFlowB,
+            String  bundleId,
+            String  orientation,
+            int     closeButtonDelay,
+            int     peekDelay,
+            int     skipButtonDelaySec,
+            int     pulseStartDelaySec,
+            String  getButtonText,
+            String  getButtonColor,
+            String  getButtonTextColor,
+            int     getButtonWidthDp,
+            int     getButtonHeightDp,
+            int     getButtonTextSizeSp,
+            int     getButtonCornerRadiusDp,
+            String  cardBackgroundColor,
+            int     cardCornerRadiusDp,
+            boolean disableMuteButton,
+            boolean disableSkipButton,
+            boolean disablePulse,
+            boolean disablePopupBackground,
+            boolean disableRewardCountdown,
+            String  rewardCountdownText,
+            String  rewardEarnedText,
+            int     rewardTextSizeSp,
+            String  rewardTextColor,
+            String  openStoreButtonText
     ) {
         // Core
         this.videoPath   = videoPath;
@@ -105,10 +134,10 @@ public class AdConfig {
         this.orientation = validateOrientation(orientation);
 
         // Timing
-        this.closeButtonDelay   = clamp(closeButtonDelay, 0, 120, Defaults.DELAY);
-        this.peekDelay          = clamp(peekDelay, 0, 60, Defaults.DELAY);
-        this.skipButtonDelaySec = clamp(skipButtonDelaySec, 0, 60, Defaults.SKIP_DELAY);
-        this.pulseStartDelaySec = clamp(pulseStartDelaySec, 0, 120, Defaults.DELAY);
+        this.closeButtonDelay   = clamp(closeButtonDelay,   Limits.MIN_DELAY, Limits.MAX_DELAY_LONG,  Defaults.GENERAL_DELAY);
+        this.peekDelay          = clamp(peekDelay,          Limits.MIN_DELAY, Limits.MAX_DELAY_SHORT, Defaults.GENERAL_DELAY);
+        this.skipButtonDelaySec = clamp(skipButtonDelaySec, Limits.MIN_DELAY, Limits.MAX_DELAY_SHORT, Defaults.SKIP_DELAY);
+        this.pulseStartDelaySec = clamp(pulseStartDelaySec, Limits.MIN_DELAY, Limits.MAX_DELAY_LONG,  Defaults.GENERAL_DELAY);
 
         // GET Button
         this.getButtonText           = validateString(getButtonText, Defaults.GET_TEXT, Limits.MAX_BTN_STR_LEN);
@@ -133,12 +162,12 @@ public class AdConfig {
         // Reward Texts
         this.rewardCountdownText    = validateString(rewardCountdownText, Defaults.REWARD_COUNTDOWN, Limits.MAX_STR_LEN);
         this.rewardEarnedText       = validateString(rewardEarnedText, Defaults.REWARD_EARNED, Limits.MAX_STR_LEN);
-        this.rewardTextSizeSp       = clamp(rewardTextSizeSp, Limits.MIN_TEXT_SIZE, Limits.MAX_TEXT_SIZE, Defaults.GET_TEXT_SIZE);
+        this.rewardTextSizeSp       = clamp(rewardTextSizeSp, Limits.MIN_TEXT_SIZE, Limits.MAX_TEXT_SIZE, Defaults.REWARD_TEXT_SIZE);
         this.rewardTextColor        = validateHex(rewardTextColor, Defaults.GET_TEXT_COLOR);
         this.openStoreButtonText    = validateString(openStoreButtonText, Defaults.OPEN_STORE, Limits.MAX_BTN_STR_LEN);
     }
 
-    // --- Helper Logic ---
+    // --- Helpers ---
 
     private static int clamp(int value, int min, int max, int fallback) {
         return (value >= min && value <= max) ? value : fallback;
@@ -170,8 +199,6 @@ public class AdConfig {
     }
 
     public static AdConfig fromIntent(Intent intent) {
-        // ... (The fromIntent implementation remains logically the same,
-        // calling the constructor with intent.getExtras)
         return new AdConfig(
                 intent.getStringExtra("VIDEO_PATH"),
                 intent.getStringExtra("CLICK_URL"),

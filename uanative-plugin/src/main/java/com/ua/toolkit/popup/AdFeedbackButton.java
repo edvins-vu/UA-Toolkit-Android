@@ -108,19 +108,41 @@ class AdFeedbackButton
     }
 
     /**
-     * Raises the feedback widget above the Stage 1 GET card in portrait mode.
-     * Called from AdPopup.peek() once the card is measured, so cardHeightPx reflects the
-     * real layout height including padding and any AdConfig-driven button size changes.
-     * No-op in landscape — horizontal separation is sufficient there.
+     * Adjusts the feedback widget vertical position relative to the Stage 1 GET card in portrait.
+     * Only raises the widget above the card when the expanded panel (PANEL_WIDTH_DP wide, anchored
+     * to the left edge at EDGE_MARGIN_DP) would horizontally overlap the card (anchored to the
+     * right edge). When there is enough horizontal clearance the widget stays at the same bottom
+     * level as the card. No-op in landscape — horizontal separation is always sufficient there.
+     *
+     * @param cardBottomMarginPx  card's bottom margin in px (_cardBottomInset + cardEdgeMargin)
+     * @param cardHeightPx        card's measured height in px
+     * @param cardWidthPx         card's measured width in px
+     * @param cardRightMarginPx   card's right margin in px (_cardRightInset + cardEdgeMargin)
      */
-    void updateBottomForCard(int cardBottomMarginPx, int cardHeightPx)
+    void updateBottomForCard(int cardBottomMarginPx, int cardHeightPx,
+                             int cardWidthPx, int cardRightMarginPx)
     {
         if (_outerContainer == null) return;
         boolean isPortrait = _activity.getResources().getConfiguration().orientation
                 == android.content.res.Configuration.ORIENTATION_PORTRAIT;
         if (!isPortrait) return;
+
+        int screenWidth   = _activity.getResources().getDisplayMetrics().widthPixels;
+        int feedbackRight = dpToPx(EDGE_MARGIN_DP) + dpToPx(PANEL_WIDTH_DP);
+        int cardLeft      = screenWidth - cardRightMarginPx - cardWidthPx;
+        boolean enoughSpace = feedbackRight <= cardLeft;
+
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) _outerContainer.getLayoutParams();
-        lp.bottomMargin = cardBottomMarginPx + cardHeightPx + dpToPx(PANEL_SPACING_DP);
+        if (enoughSpace)
+        {
+            // Horizontal gap is sufficient — keep feedback at the same level as the card
+            lp.bottomMargin = cardBottomMarginPx;
+        }
+        else
+        {
+            // Panel would overlap the card — raise feedback above it
+            lp.bottomMargin = cardBottomMarginPx + cardHeightPx + dpToPx(PANEL_SPACING_DP);
+        }
         _outerContainer.setLayoutParams(lp);
     }
 

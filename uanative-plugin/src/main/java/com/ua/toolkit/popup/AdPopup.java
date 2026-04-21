@@ -607,7 +607,9 @@ public class AdPopup
                     ? _stage1Card.getMeasuredHeight()
                     : dpToPx(_layout.cardHeightFallbackDp);
             int cardBottomMargin = _cardBottomInset + dpToPx(_layout.cardEdgeMarginDp);
-            _feedbackButton.updateBottomForCard(cardBottomMargin, (int) cardH);
+            int cardRightMargin  = _cardRightInset  + dpToPx(_layout.cardEdgeMarginDp);
+            _feedbackButton.updateBottomForCard(cardBottomMargin, (int) cardH,
+                    _stage1Card.getMeasuredWidth(), cardRightMargin);
             float startY = cardH + dpToPx(_layout.cardEdgeMarginDp);
             _stage1Card.setTranslationY(startY);
             _stage1Card.setVisibility(View.VISIBLE);

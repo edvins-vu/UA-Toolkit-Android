@@ -1,10 +1,6 @@
-// TODO:
-// IOS ad config fucntionality when its changed on server - does everything scale correctly/ colors change etc
-// confirm stage 1 popup does scale properly and looks correct - during stage 1 when sizes are changed
-
-
-// update documentation for package workflows
- // RELEASE  the ua.toolkit package version
+// TODO
+// CREATE THE DEFAULT CONFIG SETUP FOR THE GOOD SETUP
+// CREATE 2/3 VERSIONS OF THE AD CONFIG
 
 Original Background Color: #80000000 (50% Transparent Black)
 
@@ -54,10 +50,10 @@ Original Button Color: #4CAF50 (Solid Green)
 },
 "get_button": {
 "text": "GET",
-"button_color": "#000000",
-"width_dp": 165,
-"height_dp": 50,
-"text_size_sp": 14,
+"button_color": "#473FFF",
+"width_dp": 145,
+"height_dp": 55,
+"text_size_sp": 20,
 "corner_radius_dp": 100,
 "text_color": "#FFFFFF"
 },

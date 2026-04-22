@@ -430,6 +430,14 @@ public class AdActivity extends Activity implements
         finishWithResult(success);
     }
 
+    @Override public void onSkipClicked() {
+        if (closeButtonEarned || isFullyWatched) {
+            uiManager.showCloseButton();
+        } else {
+            if (popup != null) popup.pulseGetButton();
+        }
+    }
+
     private void handleFlowBCornerButtonTap() {
         AdUIManager.CornerButtonState state = uiManager.getCornerButtonState();
         if (state == AdUIManager.CornerButtonState.OPEN_STORE) {
@@ -464,7 +472,7 @@ public class AdActivity extends Activity implements
             isFullyWatched = true;
             timerManager.markRewardEarned();
             uiManager.showRewardEarned();
-            uiManager.showCloseButton(); // no-op in Flow B (guarded)
+            uiManager.showSkipButton(); // no-op in Flow B (guarded)
         }
         if (config.isFlowB) evaluateFlowBState();
     }
@@ -477,7 +485,7 @@ public class AdActivity extends Activity implements
     // --- AdTimerManager.Listener ---
 
     @Override public void onCountdownTick(int rem) {
-        if (!config.isRewarded && !closeButtonEarned && (config.closeButtonDelay - rem) >= config.skipButtonDelaySec) {
+        if (!config.isRewarded && !isPlayable && !closeButtonEarned && (config.closeButtonDelay - rem) >= config.skipButtonDelaySec) {
             uiManager.showSkipButton();
         }
         if (config.isRewarded && !isFullyWatched && !isPlayable) {
@@ -499,9 +507,11 @@ public class AdActivity extends Activity implements
             return;
         }
         if (popup == null || !popup.isExpanded()) {
-            // If skip button is already visible the user controls the transition by tapping it.
-            // Only auto-show close when skip never appeared (disabled or skipDelay >= closeDelay).
-            if (!uiManager.isSkipButtonVisible()) uiManager.showCloseButton();
+            if (isPlayable) {
+                uiManager.showSkipButton();
+            } else if (!uiManager.isSkipButtonVisible()) {
+                uiManager.showCloseButton();
+            }
         }
     }
 

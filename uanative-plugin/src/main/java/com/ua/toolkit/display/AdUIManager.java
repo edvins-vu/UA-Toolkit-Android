@@ -31,6 +31,7 @@ public class AdUIManager
     public interface Listener
     {
         void onCloseClicked();
+        void onSkipClicked();
         void onMuteClicked();
         void onVideoTouched();
     }
@@ -255,7 +256,7 @@ public class AdUIManager
         skipButton.setMinimumWidth(0);
         skipButton.setLayoutParams(new FrameLayout.LayoutParams(dpToPx(_layout.skipButtonSizeDp), dpToPx(_layout.skipButtonSizeDp), Gravity.CENTER));
         skipButton.setVisibility(View.GONE);
-        skipButton.setOnClickListener(v -> showCloseButton());
+        skipButton.setOnClickListener(v -> listener.onSkipClicked());
 
         // Close button (using TextView to avoid Button's internal padding/min size)
         closeButton = new TextView(activity);

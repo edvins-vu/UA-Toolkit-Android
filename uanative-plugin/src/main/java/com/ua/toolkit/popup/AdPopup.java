@@ -590,6 +590,24 @@ public class AdPopup
         pulse.start();
     }
 
+    /**
+     * Single one-shot pulse on the visible GET button — used when the skip button is tapped
+     * before closeButtonDelay to signal that the GET button is the intended action.
+     */
+    public void pulseGetButton()
+    {
+        if (_isCancelled) return;
+        TextView target = _state == State.COLLAPSED ? _stage3GetButton : _stage1GetButton;
+        if (target == null) return;
+        ObjectAnimator scaleX = ObjectAnimator.ofFloat(target, "scaleX", 1f, _layout.tapPulseScale, 1f);
+        ObjectAnimator scaleY = ObjectAnimator.ofFloat(target, "scaleY", 1f, _layout.tapPulseScale, 1f);
+        AnimatorSet pulse = new AnimatorSet();
+        pulse.playTogether(scaleX, scaleY);
+        pulse.setDuration(_layout.tapPulseDurationMs);
+        pulse.setInterpolator(new AccelerateDecelerateInterpolator());
+        pulse.start();
+    }
+
     // --- State Transitions ---
 
     private void peek()

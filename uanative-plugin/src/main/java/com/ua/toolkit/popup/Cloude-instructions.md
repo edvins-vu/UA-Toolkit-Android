@@ -1,73 +1,76 @@
-// expected skip button logic 
-1. Interstitial video
 
+Ad Type Button Visibility Matrix
+1. Non-Rewarded Interstitial
+isRewarded=false, isPlayable=false, isFlowB=false
 
+┌────────┬──────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Button │            When shown            │                                                Trigger                                                 │
+├────────┼──────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Skip   │ After skipButtonDelaySec elapses │ onCountdownTick when elapsed >= skipButtonDelaySec; or onCountdownComplete if equal delays (Bug 1 fix) │
+├────────┼──────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Close  │ After user taps skip             │ onSkipClicked sets skipTapped=true → showCloseButton()                                                 │
+└────────┴──────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-- Skip appears at skipButtonDelay elapsed
-
-- Tap before closeButtonDelay: do nothing + single GET button pulse
-
-- Tap after closeButtonDelay: skip → ✕
-
-
-
-  ---
-
-2. Non-rewarded playable
-
-
-
-- Skip appears at closeButtonDelay elapsed, immediately functional
-
-- Tap → ✕ (no "do nothing" path exists here)
-
-
+Sequence: nothing → skip → close → finish
 
   ---
+2. Rewarded Video
 
-3. Rewarded video — Flow A
+isRewarded=true, isPlayable=false, isFlowB=false
 
+┌────────┬────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Button │       When shown       │                                                         Trigger                                                         │
+├────────┼────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Skip   │ After full video watch │ onVideoCompleted → showSkipButton(). Timer ticks and onCountdownComplete are both !isRewarded-guarded — never show skip │
+├────────┼────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Close  │ After user taps skip   │ onSkipClicked sets skipTapped=true → showCloseButton()                                                                  │
+└────────┴────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-
-- Skip appears when countdownRemaining == 0 AND isFullyWatched,
-  immediately functional
-
-- Tap → ✕ (no "do nothing" path exists here)
-
-
-
-  ---
-
-4. Rewarded video — Flow B
-
-
-
-- Skip appears when flowBShowingClose, immediately functional
-
-- Tap → dismissWithSuccess:YES (no "do nothing" path exists here)
-
-
+Sequence: countdown text → "Reward earned!" + skip → close → finish (success)
 
   ---
+3. Rewarded Playable
 
-5. Rewarded playable — Flow A
+isPlayable=true, isFlowB=false
 
+┌────────┬────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Button │           When shown           │                                             Trigger                                              │
+├────────┼────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Skip   │ After closeButtonDelay elapses │ onCountdownComplete → isPlayable path → showSkipButton(). onCountdownTick guarded by !isPlayable │
+├────────┼────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Close  │ After user taps skip           │ onSkipClicked sets skipTapped=true → showCloseButton()                                           │
+└────────┴────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-
-- Skip appears at closeButtonDelay elapsed, immediately functional
-
-- Tap → ✕ (no "do nothing" path exists here)
-
-
+Sequence: HTML loads → mute appears → skip after delay → close → finish
 
   ---
+4. Flow B Video
 
-6. Rewarded playable — Flow B
+isFlowB=true, isPlayable=false, isRewarded=true
 
+┌────────────┬─────────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│   Button   │               When shown                │                                             Trigger                                             │
+├────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ OPEN STORE │ From start                              │ Created visible in createButtonContainer()                                                      │
+├────────────┼─────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ✕ (Close)  │ After isFullyWatched && hasVisitedStore │ evaluateFlowBState() called from onVideoCompleted or onCollapsed → 1500ms delay → animated fade │
+└────────────┴─────────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────┘
 
-- Skip appears when flowBShowingClose, immediately functional
+Skip never shown (showSkipButton() guarded by if (isFlowB) return).
+Sequence: OPEN STORE → visit store + watch video (any order) → 1500ms fade to ✕ → finish (always success)
 
-- Tap → dismissWithSuccess:YES (no "do nothing" path exists here)
+  ---
+5. Flow B Playable
+
+isFlowB=true, isPlayable=true
+
+┌────────────┬────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────┐
+│   Button   │                 When shown                 │                                          Trigger                                          │
+├────────────┼────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┤
+│ OPEN STORE │ After HTML loads                           │ Starts GONE; showPlayableControls() makes it visible on onPageFinished                    │
+├────────────┼────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┤
+│ ✕ (Close)  │ After closeButtonEarned && hasVisitedStore │ evaluateFlowBState() called from onCountdownComplete or onCollapsed → 1500ms delay → fade │
+└────────────┴────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────┘
 
 
 // Notes

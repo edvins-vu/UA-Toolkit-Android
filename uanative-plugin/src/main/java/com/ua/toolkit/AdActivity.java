@@ -44,6 +44,7 @@ public class AdActivity extends Activity implements
     private boolean resultSent = false;
     private boolean pausedByAudioFocus = false;
     private boolean closeButtonEarned = false;
+    private boolean skipTapped = false;
     private boolean resumingFromPlayOverlay = false;
     private boolean adStartedFired  = false;
     private boolean adClickFired    = false;
@@ -90,6 +91,7 @@ public class AdActivity extends Activity implements
             // Activity recreated but process survived — restore reward-critical state.
             isFullyWatched    = savedInstanceState.getBoolean("isFullyWatched", false);
             closeButtonEarned = savedInstanceState.getBoolean("closeButtonEarned", false);
+            skipTapped        = savedInstanceState.getBoolean("skipTapped", false);
             savedVideoPosition = savedInstanceState.getInt("videoPosition", 0);
             hasVisitedStore   = savedInstanceState.getBoolean("hasVisitedStore", false);
             adStartedFired    = savedInstanceState.getBoolean("adStartedFired",  false);
@@ -111,8 +113,12 @@ public class AdActivity extends Activity implements
         }
 
         // Reapply earned UI state after manager setup (restoration path)
-        if (isFullyWatched)         { uiManager.showRewardEarned(); uiManager.showCloseButton(); }
-        else if (closeButtonEarned) { uiManager.showCloseButton(); }
+        if (isFullyWatched) {
+            uiManager.showRewardEarned();
+            if (skipTapped) uiManager.showCloseButton(); else uiManager.showSkipButton();
+        } else if (closeButtonEarned) {
+            if (skipTapped) uiManager.showCloseButton(); else uiManager.showSkipButton();
+        }
         if (config.isFlowB && savedInstanceState != null) {
             boolean engagementMet = isPlayable ? closeButtonEarned : isFullyWatched;
             if (engagementMet && hasVisitedStore) {
@@ -309,7 +315,9 @@ public class AdActivity extends Activity implements
                 if (!isFinishing()) resumeContent();
                 if (!isFinishing() && timerManager != null) timerManager.resume();
             }
-            if (closeButtonEarned || isFullyWatched) uiManager.showCloseButton();
+            if (closeButtonEarned || isFullyWatched) {
+                if (skipTapped) uiManager.showCloseButton(); else uiManager.showSkipButton();
+            }
         }
 
         @Override
@@ -432,6 +440,7 @@ public class AdActivity extends Activity implements
 
     @Override public void onSkipClicked() {
         if (closeButtonEarned || isFullyWatched) {
+            skipTapped = true;
             uiManager.showCloseButton();
         } else {
             if (popup != null) popup.pulseGetButton();
@@ -509,8 +518,8 @@ public class AdActivity extends Activity implements
         if (popup == null || !popup.isExpanded()) {
             if (isPlayable) {
                 uiManager.showSkipButton();
-            } else if (!uiManager.isSkipButtonVisible()) {
-                uiManager.showCloseButton();
+            } else if (!config.isRewarded && !uiManager.isSkipButtonVisible()) {
+                uiManager.showSkipButton();
             }
         }
     }
@@ -623,8 +632,9 @@ public class AdActivity extends Activity implements
         if (uiManager != null) {
             uiManager.setupFullscreen();
             // Re-assert close button — it may have been hidden by onExpanded() before the store opened
-            if ((isFullyWatched || closeButtonEarned) && (popup == null || !popup.isExpanded()))
-                uiManager.showCloseButton();
+            if ((isFullyWatched || closeButtonEarned) && (popup == null || !popup.isExpanded())) {
+                if (skipTapped) uiManager.showCloseButton(); else uiManager.showSkipButton();
+            }
         }
         // Do not resume video/timer while the Play Store overlay is still active —
         // onPlayOverlayResult() handles resume when the overlay is dismissed.
@@ -656,6 +666,7 @@ public class AdActivity extends Activity implements
         super.onSaveInstanceState(outState);
         outState.putBoolean("isFullyWatched", isFullyWatched);
         outState.putBoolean("closeButtonEarned", closeButtonEarned);
+        outState.putBoolean("skipTapped", skipTapped);
         outState.putBoolean("hasVisitedStore", hasVisitedStore);
         outState.putBoolean("adStartedFired",  adStartedFired);
         outState.putBoolean("adClickFired",    adClickFired);

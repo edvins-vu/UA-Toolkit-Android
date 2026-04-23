@@ -116,7 +116,7 @@ public class HeadlessWebViewResolver
     @SuppressLint("SetJavaScriptEnabled")
     private void createAndLoadWebView(String url)
     {
-        Log.d(TAG, "Creating headless WebView for URL: " + url);
+        Log.d(TAG, "Creating headless WebView for host: " + Uri.parse(url).getHost());
 
         webView = new WebView(context);
 
@@ -157,7 +157,8 @@ public class HeadlessWebViewResolver
 
         private boolean handleUrl(String url)
         {
-            Log.d(TAG, "Redirect intercepted: " + url);
+            Uri parsed = Uri.parse(url);
+            Log.d(TAG, "Redirect intercepted: scheme=" + parsed.getScheme() + " packageId=" + parsed.getQueryParameter("id"));
 
             // Check if this is a Play Store URL
             if (isPlayStoreUrl(url))
@@ -280,7 +281,7 @@ public class HeadlessWebViewResolver
                 packageId = uri.getQueryParameter("id");
             }
 
-            Log.d(TAG, "Extracted - packageId: " + packageId + ", referrer: " + referrer);
+            Log.d(TAG, "Extracted - packageId: " + packageId + ", referrerPresent=" + (referrer != null && !referrer.isEmpty()) + ", hasAdjustReftag=" + (referrer != null && referrer.contains("adjust_reftag")));
         }
         catch (Exception e)
         {
@@ -319,7 +320,7 @@ public class HeadlessWebViewResolver
         cancelTimeout();
         cleanup();
 
-        Log.d(TAG, "Resolution successful: " + storeInfo);
+        Log.d(TAG, "Resolution successful: packageId=" + storeInfo.packageId + " hasAdjustReftag=" + (storeInfo.referrer != null && storeInfo.referrer.contains("adjust_reftag")));
 
         ResolverCallback cb = callback;
         callback = null;

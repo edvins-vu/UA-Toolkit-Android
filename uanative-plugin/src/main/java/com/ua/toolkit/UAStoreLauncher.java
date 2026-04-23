@@ -157,7 +157,7 @@ public class UAStoreLauncher
         currentResolver = new HeadlessWebViewResolver(context);
         currentResolver.setTimeout(DEFAULT_TIMEOUT_MS);
 
-        Log.d(TAG, "resolveReferrer: resolving — " + clickUrl);
+        Log.d(TAG, "resolveReferrer: resolving — host=" + Uri.parse(clickUrl).getHost());
 
         currentResolver.resolve(clickUrl, new HeadlessWebViewResolver.ResolverCallback()
         {
@@ -165,7 +165,7 @@ public class UAStoreLauncher
             public void onStoreFound(HeadlessWebViewResolver.StoreInfo storeInfo)
             {
                 currentResolver = null;
-                Log.d(TAG, "resolveReferrer: resolved — referrer=" + storeInfo.referrer);
+                Log.d(TAG, "resolveReferrer: resolved — packageId=" + storeInfo.packageId + " hasAdjustReftag=" + (storeInfo.referrer != null && storeInfo.referrer.contains("adjust_reftag")));
                 callback.onResolved(storeInfo.referrer);
             }
 

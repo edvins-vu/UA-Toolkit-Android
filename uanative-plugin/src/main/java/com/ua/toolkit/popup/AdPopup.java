@@ -403,7 +403,7 @@ public class AdPopup
                     + (clickQueryParams != null ? "&" + clickQueryParams : "")
                     + "&utm_source=adjust_store"
                 : "utm_source=adjust_store";
-        Log.d(TAG, "launchPlayOverlay: tracker=" + tracker + " fallbackReferrer=" + fallbackReferrer);
+        Log.d(TAG, "launchPlayOverlay: trackerPresent=" + (tracker != null) + " fallbackReferrerPresent=" + (fallbackReferrer != null));
 
         // Intent base — referrer will be appended right before startActivityForResult in each branch
         Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -438,8 +438,7 @@ public class AdPopup
                     if (_isCancelled || _activity.isFinishing()) return;
                     boolean gotReftag = resolvedReferrer != null && !resolvedReferrer.isEmpty();
                     String referrer = gotReftag ? resolvedReferrer : fallbackReferrer;
-                    Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — referrer=" + referrer
-                            + (gotReftag ? " (adjust_reftag)" : " (fallback tracker)"));
+                    Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — referrerSource=" + (gotReftag ? "adjust_reftag" : "fallback_tracker") + " referrerPresent=true");
                     intent.setData(Uri.parse("https://play.google.com/d?id=" + _bundleId
                             + "&referrer=" + Uri.encode(referrer)));
                     _activity.startActivityForResult(intent, REQUEST_PLAY_OVERLAY);
@@ -448,7 +447,7 @@ public class AdPopup
             else
             {
                 if (_clickUrlFired)
-                    Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — click already tracked, referrer=" + fallbackReferrer);
+                    Log.d(TAG, "launchPlayOverlay: PATH=half-sheet — click already tracked, usingFallbackReferrer=true");
                 else
                     Log.e(TAG, "launchPlayOverlay: PATH=half-sheet — clickUrl is null, click not tracked");
                 intent.setData(Uri.parse("https://play.google.com/d?id=" + _bundleId
@@ -467,7 +466,7 @@ public class AdPopup
 
             if (_config == null || _config.clickUrl == null || _config.clickUrl.isEmpty())
             {
-                Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, opening store via bundleId referrer=" + fallbackReferrer);
+                Log.w(TAG, "launchPlayOverlay: PATH=direct-fallback — clickUrl is null, opening store via bundleId usingFallbackReferrer=true");
                 if (!_isCancelled && !_activity.isFinishing())
                     StoreOpener.openStore(_activity, _bundleId, fallbackReferrer);
                 return;
@@ -487,8 +486,7 @@ public class AdPopup
                     @Override
                     public void onFailed(String reason)
                     {
-                        Log.e(TAG, "launchPlayOverlay: fallback UAStoreLauncher failed (" + reason + ")"
-                                + " — retrying with StoreOpener bundleId=" + _bundleId + " referrer=" + fallbackReferrer);
+                        Log.e(TAG, "launchPlayOverlay: fallback UAStoreLauncher failed (" + reason + ") — retrying with StoreOpener bundleId=" + _bundleId + " usingFallbackReferrer=true");
                         if (!_isCancelled && !_activity.isFinishing())
                             StoreOpener.openStore(_activity, _bundleId, fallbackReferrer);
                         else
@@ -498,7 +496,7 @@ public class AdPopup
             }
             else
             {
-                Log.d(TAG, "launchPlayOverlay: fallback — click already tracked, opening store directly bundleId=" + _bundleId + " referrer=" + fallbackReferrer);
+                Log.d(TAG, "launchPlayOverlay: fallback — click already tracked, opening store directly bundleId=" + _bundleId + " usingFallbackReferrer=true");
                 StoreOpener.openStore(_activity, _bundleId, fallbackReferrer);
             }
         }

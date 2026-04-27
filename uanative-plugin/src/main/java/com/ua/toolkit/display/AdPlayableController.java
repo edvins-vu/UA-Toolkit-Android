@@ -9,6 +9,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import com.ua.toolkit.AdJsBridge;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -116,13 +118,12 @@ public class AdPlayableController
      *
      * @param context    Activity context for WebView construction
      * @param rootLayout Root FrameLayout — WebView is inserted at index 0
-     * @param jsBridge   Pre-constructed JS bridge object (passed as Object so this class
-     *                   carries no import dependency on the bridge type)
+     * @param jsBridge   Pre-constructed JS bridge object
      * @param onReady    Fired when the page has loaded and the ad can start
      * @param onError    Fired with a message if the WebView fails to load
      */
     public AdPlayableController(Context context, FrameLayout rootLayout,
-                                Object jsBridge,
+                                AdJsBridge jsBridge,
                                 Runnable onReady,
                                 ErrorCallback onError)
     {
